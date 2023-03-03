@@ -38,7 +38,7 @@ public:
 
     bool begin();
 
-    bool isConnected();
+    bool isConnected() const;
 
     void connect(uint connectTimeoutMs = 1000);
 
@@ -46,6 +46,8 @@ private:
     const uint16_t kReceiveTimeoutMs{5000};
 
     void update(void) override;
+
+    void hexDump(const uint8_t *buffer, int length) const;
 
     EthernetUDP udp;
     /**
@@ -63,7 +65,8 @@ private:
     uint16_t remotePort, localPort;
     bool connected{false};
     elapsedMillis receiveTimer{0};
-    char packetBuffer[1 << 8]{};
+    uint8_t packetBuffer[1 << 8]{};
+
     uint64_t receivedCount{0};
 };
 

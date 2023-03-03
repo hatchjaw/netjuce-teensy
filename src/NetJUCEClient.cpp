@@ -33,7 +33,7 @@ bool NetJUCEClient::begin() {
     }
 }
 
-bool NetJUCEClient::isConnected() {
+bool NetJUCEClient::isConnected() const {
     return connected;
 }
 
@@ -65,6 +65,7 @@ void NetJUCEClient::update(void) {
     auto packetSize{0};
     if (connected) {
         auto didRead{false};
+        // TODO: switch to `while`; use circular buffer.
         if ((packetSize = udp.parsePacket()) > 0) {
             ++receivedCount;
             didRead = true;
@@ -81,20 +82,10 @@ void NetJUCEClient::update(void) {
         memset(packetBuffer, 0, sizeof packetBuffer);
     }
 
+    hexDump(packetBuffer, packetSize);
+
     audio_block_t *outBlock[NUM_SOURCES];
     auto channelFrameSize{AUDIO_BLOCK_SAMPLES * sizeof(uint16_t)};
-
-    if (receivedCount > 0 && receivedCount % 1000 == 0) {
-        Serial.printf("Received %d\n", receivedCount);
-        int i = 1;
-        for (const char *p = packetBuffer; i <= packetSize; ++p, ++i) {
-            Serial.printf("%02x ", *p);
-            if (i % 16 == 0) {
-                Serial.print("\n");
-            }
-        }
-        Serial.println();
-    }
 
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         outBlock[ch] = allocate();
@@ -114,6 +105,22 @@ void NetJUCEClient::update(void) {
         udp.stop();
         connected = false;
         receiveTimer = 0;
+    }
+}
+
+void NetJUCEClient::hexDump(const uint8_t *buffer, int length) const {
+    if (receivedCount > 0 && receivedCount % 1000 == 0) {
+        Serial.printf("Seq. number %d\n", receivedCount);
+        int word{0}, row{0};
+        for (const uint8_t *p = buffer; word < length; ++p, ++word) {
+            if (word % 16 == 0) {
+                if (word != 0) Serial.print("\n");
+                Serial.printf("%04x: ", row);
+                ++row;
+            }
+            Serial.printf("%02x ", *p);
+        }
+        Serial.println("\n");
     }
 }
 
