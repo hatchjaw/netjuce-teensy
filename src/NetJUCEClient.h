@@ -64,7 +64,7 @@ private:
     bool connected{false};
     elapsedMillis receiveTimer{0};
     char packetBuffer[1 << 8]{};
-    uint64_t receivedCount{0}, rcv{0};
+    uint64_t receivedCount{0};
 };
 
 

@@ -39,9 +39,7 @@ bool NetJUCEClient::isConnected() {
 
 void NetJUCEClient::connect(uint connectTimeoutMs) {
     if (!active) {
-//        Serial.println(F("===================================================="));
         Serial.println(F("Client is not connected to any Teensy audio objects."));
-//        Serial.println(F("===================================================="));
         delay(connectTimeoutMs);
         return;
     }
@@ -66,32 +64,10 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 void NetJUCEClient::update(void) {
     auto packetSize{0};
     if (connected) {
-        auto didRead{0};
+        auto didRead{false};
         if ((packetSize = udp.parsePacket()) > 0) {
-            auto isSmall{packetSize < 50};
             ++receivedCount;
-            ++rcv;
-            ++didRead;
-
-//            if (receivedCount % 1 == 0) {
-//                Serial.printf(F("%16" PRIu64 " Received packet from "), receivedCount);
-//                IPAddress remote = udp.remoteIP();
-//                for (int i = 0; i < 4; i++) {
-//                    Serial.print(remote[i], DEC);
-//                    if (i < 3) {
-//                        Serial.print(F("."));
-//                    }
-//                }
-//                Serial.printf(F(":%d, size %d bytes\n"), udp.remotePort(), packetSize);
-//            }
-
-            // read the packet into packetBuffer
-//            isSmall && Serial.print(F("Contents: "));
-//            while (0 < udp.read(packetBuffer, packetSize)) {
-//                isSmall && Serial.print(packetBuffer);
-////                memset(packetBuffer, 0, sizeof packetBuffer);
-//            }
-//            isSmall && Serial.println();
+            didRead = true;
 
             if (packetSize != 128) Serial.printf("Packet size: %d\n", packetSize);
             udp.read(packetBuffer, packetSize);
@@ -105,16 +81,10 @@ void NetJUCEClient::update(void) {
         memset(packetBuffer, 0, sizeof packetBuffer);
     }
 
-//    audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
     audio_block_t *outBlock[NUM_SOURCES];
-//    const int16_t *audio[NUM_SOURCES];
     auto channelFrameSize{AUDIO_BLOCK_SAMPLES * sizeof(uint16_t)};
 
-//    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
-//        audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + AUDIO_BLOCK_SAMPLES * sizeof(uint16_t) * ch);
-//    }
-
-    if (rcv == 1000) {
+    if (receivedCount > 0 && receivedCount % 1000 == 0) {
         Serial.printf("Received %d\n", receivedCount);
         int i = 1;
         for (const char *p = packetBuffer; i <= packetSize; ++p, ++i) {
@@ -124,18 +94,15 @@ void NetJUCEClient::update(void) {
             }
         }
         Serial.println();
-
-        rcv = 0;
     }
 
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         outBlock[ch] = allocate();
         if (outBlock[ch]) {
             // Copy the samples to the output block.
-//            memcpy(outBlock[ch]->data, audioBlock[ch], CHANNEL_FRAME_SIZE);
-            memcpy(outBlock[ch]->data, reinterpret_cast<int16_t *>(packetBuffer + channelFrameSize * ch),
+            memcpy(outBlock[ch]->data,
+                   reinterpret_cast<int16_t *>(packetBuffer + channelFrameSize * ch),
                    channelFrameSize);
-//            memset(outBlock[ch]->data, 0, channelFrameSize);
             // Finish up.
             transmit(outBlock[ch], ch);
             release(outBlock[ch]);
