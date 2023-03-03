@@ -26,11 +26,9 @@
 #endif
 
 #include <Audio.h>
-#include <QNEthernet.h>
+#include <NativeEthernet.h>
 
-namespace qn = qindesign::network;
-
-class NetJUCEClient : public AudioStream, qn::EthernetUDP {
+class NetJUCEClient : public AudioStream {
 public:
     explicit NetJUCEClient(
             IPAddress &multicastIPAddress,
@@ -40,11 +38,33 @@ public:
 
     bool begin();
 
+    bool isConnected();
+
+    void connect(uint connectTimeoutMs = 1000);
+
 private:
+    const uint16_t kReceiveTimeoutMs{5000};
+
     void update(void) override;
 
+    EthernetUDP udp;
+    /**
+     * MAC address to assign to Teensy's ethernet shield.
+     */
+    byte clientMAC[6]{};
+    /**
+     * IP to assign to Teensy.
+     */
+    IPAddress clientIP{192, 168, 10, 0};
+    /**
+     * IP of the multicast group to join.
+     */
     IPAddress multicastIP;
     uint16_t remotePort, localPort;
+    bool connected{false};
+    elapsedMillis receiveTimer{0};
+    char packetBuffer[1 << 8]{};
+    uint64_t receivedCount{0}, rcv{0};
 };
 
 
