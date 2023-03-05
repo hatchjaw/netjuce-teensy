@@ -3,14 +3,15 @@
 //
 
 #include "NetJUCEClient.h"
+#include "PacketHeader.h"
 #include <TeensyID.h>
+#include <imxrt_hw.h>
 
 NetJUCEClient::NetJUCEClient(IPAddress &multicastIPAddress, uint16_t remotePort, uint16_t localPort) :
         AudioStream{NUM_SOURCES, new audio_block_t *[NUM_SOURCES]},
         multicastIP{multicastIPAddress},
         remotePort{remotePort},
         localPort{localPort} {
-    Serial.println("client ctr");
     teensyMAC(clientMAC);
     clientIP[3] = clientMAC[5];
 }
@@ -22,6 +23,19 @@ bool NetJUCEClient::begin() {
     EthernetClass::begin(clientMAC, clientIP);
 
     receiveTimer = 0;
+
+//    //PLL:
+//    int fs = 44101.f;
+//    // PLL between 27*24 = 648MHz und 54*24=1296MHz
+//    int n1 = 4; //SAI prescaler 4 => (n1*n2) = multiple of 4
+//    int n2 = 1 + (24000000 * 27) / (fs * 256 * n1);
+//
+//    double C = ((double)fs * 256 * n1 * n2) / 24000000;
+//    int c0 = C;
+//    int c2 = 10000;
+//    int c1 = C * c2 - (c0 * c2);
+//    Serial.printf("nfact %d nmult %d ndiv %d\n", c0, c1, c2);
+//    set_audioClock(c0, c1, c2, true);
 
     if (EthernetClass::linkStatus() != LinkON) {
         Serial.println("Ethernet link could not be established.");
@@ -62,6 +76,32 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 }
 
 void NetJUCEClient::update(void) {
+    receive();
+
+    doAudioOutput();
+
+    send();
+}
+
+void NetJUCEClient::doAudioOutput() {
+    audio_block_t *outBlock[NUM_SOURCES];
+    auto channelFrameSize{AUDIO_BLOCK_SAMPLES * sizeof(uint16_t)};
+
+    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+        outBlock[ch] = allocate();
+        if (outBlock[ch]) {
+            // Copy the samples to the output block.
+            memcpy(outBlock[ch]->data,
+                   reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + channelFrameSize * ch),
+                   channelFrameSize);
+            // Finish up.
+            transmit(outBlock[ch], ch);
+            release(outBlock[ch]);
+        }
+    }
+}
+
+void NetJUCEClient::receive() {
     auto packetSize{0};
     if (connected) {
         auto didRead{false};
@@ -83,22 +123,6 @@ void NetJUCEClient::update(void) {
     }
 
     hexDump(packetBuffer, packetSize);
-
-    audio_block_t *outBlock[NUM_SOURCES];
-    auto channelFrameSize{AUDIO_BLOCK_SAMPLES * sizeof(uint16_t)};
-
-    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
-        outBlock[ch] = allocate();
-        if (outBlock[ch]) {
-            // Copy the samples to the output block.
-            memcpy(outBlock[ch]->data,
-                   reinterpret_cast<int16_t *>(packetBuffer + channelFrameSize * ch),
-                   channelFrameSize);
-            // Finish up.
-            transmit(outBlock[ch], ch);
-            release(outBlock[ch]);
-        }
-    }
 
     if (receiveTimer > kReceiveTimeoutMs) {
         Serial.printf(F("Nothing received for %d ms. Stopping.\n"), kReceiveTimeoutMs);
@@ -122,6 +146,10 @@ void NetJUCEClient::hexDump(const uint8_t *buffer, int length) const {
         }
         Serial.println("\n");
     }
+}
+
+void NetJUCEClient::send() {
+
 }
 
 

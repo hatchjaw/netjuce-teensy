@@ -47,6 +47,10 @@ private:
 
     void update(void) override;
 
+    void receive();
+
+    void doAudioOutput();
+
     void hexDump(const uint8_t *buffer, int length) const;
 
     EthernetUDP udp;
@@ -66,8 +70,9 @@ private:
     bool connected{false};
     elapsedMillis receiveTimer{0};
     uint8_t packetBuffer[1 << 8]{};
-
     uint64_t receivedCount{0};
+
+    void send();
 };
 
 
