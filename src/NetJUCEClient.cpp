@@ -11,10 +11,24 @@ NetJUCEClient::NetJUCEClient(IPAddress &multicastIPAddress, uint16_t remotePort,
         AudioStream{NUM_SOURCES, new audio_block_t *[NUM_SOURCES]},
         multicastIP{multicastIPAddress},
         remotePort{remotePort},
-        localPort{localPort} {
+        localPort{localPort},
+        audioBuffer{NUM_SOURCES, AUDIO_BLOCK_SAMPLES * 32},
+        audioBlock{new int16_t *[NUM_SOURCES]} {
     teensyMAC(clientMAC);
     clientIP[3] = clientMAC[5];
+
+    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+        audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
+    }
 }
+
+NetJUCEClient::~NetJUCEClient() {
+    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+        delete[] audioBlock[ch];
+    }
+    delete[] audioBlock;
+}
+
 
 bool NetJUCEClient::begin() {
     Serial.printf(F("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n"),
@@ -25,7 +39,7 @@ bool NetJUCEClient::begin() {
     receiveTimer = 0;
 
 //    //PLL:
-//    int fs = 44101.f;
+//    int fs = 44150.f;
 //    // PLL between 27*24 = 648MHz und 54*24=1296MHz
 //    int n1 = 4; //SAI prescaler 4 => (n1*n2) = multiple of 4
 //    int n2 = 1 + (24000000 * 27) / (fs * 256 * n1);
@@ -80,49 +94,83 @@ void NetJUCEClient::update(void) {
 
     doAudioOutput();
 
-    send();
-}
-
-void NetJUCEClient::doAudioOutput() {
-    audio_block_t *outBlock[NUM_SOURCES];
-    auto channelFrameSize{AUDIO_BLOCK_SAMPLES * sizeof(uint16_t)};
-
-    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
-        outBlock[ch] = allocate();
-        if (outBlock[ch]) {
-            // Copy the samples to the output block.
-            memcpy(outBlock[ch]->data,
-                   reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + channelFrameSize * ch),
-                   channelFrameSize);
-            // Finish up.
-            transmit(outBlock[ch], ch);
-            release(outBlock[ch]);
-        }
-    }
+//    send();
 }
 
 void NetJUCEClient::receive() {
-    auto packetSize{0};
-    if (connected) {
+    if (!connected) {
+        memset(packetBuffer, 0, sizeof packetBuffer);
+        return;
+    }
+
+    int packetSize;
+
+    if (useCircularBuffer) {
+        while ((packetSize = udp.parsePacket()) > 0) {
+            ++receivedCount;
+            receiveTimer = 0;
+
+            udp.read(packetBuffer, packetSize);
+
+//            if (receivedCount > 0 && receivedCount % 10000 <= 1) {
+//                hexDump(packetBuffer, packetSize);
+//            }
+
+            if (receiveHeader) {
+                auto headerIn{reinterpret_cast<PacketHeader *>(packetBuffer)};
+                auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
+
+                if (receivedCount > 0 && receivedCount % 10000 <= 1) {
+//                    Serial.println(*headerIn);
+                    Serial.printf("SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
+                                  headerIn->SeqNumber,
+                                  headerIn->BufferSize,
+                                  headerIn->NumChannels);
+                    Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
+                    Serial.printf("Seq: %d\n", headerIn->SeqNumber);
+                    hexDump(packetBuffer, packetSize);
+                }
+
+                // Assume 16-bit; TODO: should generalise
+                const int16_t *audio[headerIn->NumChannels];
+                for (int ch = 0; ch < headerIn->NumChannels; ++ch) {
+                    audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + ch * bytesPerChannel);
+                }
+                audioBuffer.write(audio, headerIn->BufferSize);
+            } else {
+                auto bytesPerFrame{AUDIO_BLOCK_SAMPLES * sizeof(int16_t)};
+
+                // Assume 16-bit; TODO: should generalise
+                const int16_t *audio[NUM_SOURCES];
+                for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+                    audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + ch * bytesPerFrame);
+                }
+                audioBuffer.write(audio, AUDIO_BLOCK_SAMPLES);
+            }
+        }
+    } else {
         auto didRead{false};
-        // TODO: switch to `while`; use circular buffer.
+
         if ((packetSize = udp.parsePacket()) > 0) {
             ++receivedCount;
             didRead = true;
 
-            if (packetSize != 128) Serial.printf("Packet size: %d\n", packetSize);
+//            if (packetSize != 128) Serial.printf("Packet size: %d\n", packetSize);
             udp.read(packetBuffer, packetSize);
             receiveTimer = 0;
         }
 
         if (0 == didRead) {
+            Serial.println(F("Zero packets read."));
             memset(packetBuffer, 0, sizeof packetBuffer);
+        } else {
+            auto headerIn{reinterpret_cast<PacketHeader *>(packetBuffer)};
+            if (headerIn->SeqNumber % 10000 <= 1) {
+                Serial.printf(F("Seq. number %d\n"), headerIn->SeqNumber);
+                hexDump(packetBuffer, packetSize);
+            }
         }
-    } else {
-        memset(packetBuffer, 0, sizeof packetBuffer);
     }
-
-    hexDump(packetBuffer, packetSize);
 
     if (receiveTimer > kReceiveTimeoutMs) {
         Serial.printf(F("Nothing received for %d ms. Stopping.\n"), kReceiveTimeoutMs);
@@ -132,24 +180,56 @@ void NetJUCEClient::receive() {
     }
 }
 
-void NetJUCEClient::hexDump(const uint8_t *buffer, int length) const {
-    if (receivedCount > 0 && receivedCount % 1000 == 0) {
-        Serial.printf("Seq. number %d\n", receivedCount);
-        int word{0}, row{0};
-        for (const uint8_t *p = buffer; word < length; ++p, ++word) {
-            if (word % 16 == 0) {
-                if (word != 0) Serial.print("\n");
-                Serial.printf("%04x: ", row);
-                ++row;
-            }
-            Serial.printf("%02x ", *p);
+void NetJUCEClient::doAudioOutput() {
+    if (useCircularBuffer) {
+        audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
+        if (receivedCount > 0 && receivedCount % 10000 <= 1) {
+            hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 64);
         }
-        Serial.println("\n");
+    }
+
+    audio_block_t *outBlock[NUM_SOURCES];
+    auto channelFrameSize{AUDIO_BLOCK_SAMPLES * sizeof(int16_t)};
+
+    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+        outBlock[ch] = allocate();
+        if (outBlock[ch]) {
+            // Copy the samples to the output block.
+            if (useCircularBuffer) {
+                memcpy(outBlock[ch]->data, audioBlock[ch], channelFrameSize);
+            } else {
+                memcpy(outBlock[ch]->data,
+                       receiveHeader ?
+                       reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + channelFrameSize * ch) :
+                       reinterpret_cast<int16_t *>(packetBuffer + channelFrameSize * ch),
+                       channelFrameSize);
+            }
+            // Finish up.
+            transmit(outBlock[ch], ch);
+            release(outBlock[ch]);
+        }
     }
 }
 
-void NetJUCEClient::send() {
-
+void NetJUCEClient::hexDump(const uint8_t *buffer, int length) const {
+    int word{10}, row{0};
+    Serial.print(F("HEAD:"));
+    for (const uint8_t *p = buffer; word < length + 10; ++p, ++word) {
+        if (word % 16 == 0) {
+            if (word != 0) Serial.print(F("\n"));
+            Serial.printf(F("%04x: "), row);
+            ++row;
+        } else if (word % 2 == 0) {
+            Serial.print(F(" "));
+        }
+        Serial.printf(F("%02x "), *p);
+    }
+    Serial.println(F("\n"));
 }
 
+void NetJUCEClient::send() {
+    if (!connected) return;
+
+    ++header.SeqNumber;
+}
 

@@ -27,6 +27,8 @@
 
 #include <Audio.h>
 #include <NativeEthernet.h>
+#include "PacketHeader.h"
+#include "CircularBuffer.h"
 
 class NetJUCEClient : public AudioStream {
 public:
@@ -35,6 +37,8 @@ public:
             uint16_t remotePort = REMOTE_PORT,
             uint16_t localPort = LOCAL_PORT
     );
+
+    virtual ~NetJUCEClient();
 
     bool begin();
 
@@ -69,8 +73,21 @@ private:
     uint16_t remotePort, localPort;
     bool connected{false};
     elapsedMillis receiveTimer{0};
-    uint8_t packetBuffer[1 << 8]{};
+    /**
+     * Buffer for incoming packets.
+     */
+    uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
     uint64_t receivedCount{0};
+    PacketHeader header{
+        0,
+        AUDIO_BLOCK_SAMPLES,
+        SamplingRateT::SR44,
+        BitResolutionT::BIT16,
+        NUM_SOURCES
+    };
+    bool receiveHeader{true}, useCircularBuffer{true};
+    CircularBuffer<int16_t> audioBuffer;
+    int16_t **audioBlock;
 
     void send();
 };

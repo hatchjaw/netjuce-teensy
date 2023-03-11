@@ -25,13 +25,18 @@ enum SamplingRateT {
     UNDEF
 };
 
-struct PacketHeader {
+struct PacketHeader {//: public Printable {
 public:
     uint16_t SeqNumber;
-    uint16_t BufferSize;
+    uint8_t BufferSize;
     uint8_t SamplingRate;
     uint8_t BitResolution;
     uint8_t NumChannels;
+
+//    size_t printTo(Print &p) const override {
+//        p.printf("SeqNumber: %d, BufferSize: %d, NumChannels: %d", SeqNumber, BufferSize, NumChannels);
+//        return 0;
+//    }
 };
 
 #define PACKET_HEADER_SIZE sizeof (PacketHeader)
