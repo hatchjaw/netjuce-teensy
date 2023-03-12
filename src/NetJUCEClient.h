@@ -55,7 +55,7 @@ private:
 
     void doAudioOutput();
 
-    void hexDump(const uint8_t *buffer, int length) const;
+    void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
     EthernetUDP udp;
     /**

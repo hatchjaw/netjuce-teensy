@@ -128,7 +128,7 @@ void NetJUCEClient::receive() {
                                   headerIn->NumChannels);
                     Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
                     Serial.printf("Seq: %d\n", headerIn->SeqNumber);
-                    hexDump(packetBuffer, packetSize);
+                    hexDump(packetBuffer, packetSize, true);
                 }
 
                 // Assume 16-bit; TODO: should generalise
@@ -175,6 +175,7 @@ void NetJUCEClient::receive() {
     if (receiveTimer > kReceiveTimeoutMs) {
         Serial.printf(F("Nothing received for %d ms. Stopping.\n"), kReceiveTimeoutMs);
         udp.stop();
+        audioBuffer.clear();
         connected = false;
         receiveTimer = 0;
     }
@@ -184,6 +185,7 @@ void NetJUCEClient::doAudioOutput() {
     if (useCircularBuffer) {
         audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
         if (receivedCount > 0 && receivedCount % 10000 <= 1) {
+            Serial.println(F("Channel 1"));
             hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 64);
         }
     }
@@ -211,10 +213,10 @@ void NetJUCEClient::doAudioOutput() {
     }
 }
 
-void NetJUCEClient::hexDump(const uint8_t *buffer, int length) const {
-    int word{10}, row{0};
-    Serial.print(F("HEAD:"));
-    for (const uint8_t *p = buffer; word < length + 10; ++p, ++word) {
+void NetJUCEClient::hexDump(const uint8_t *buffer, int length, bool doHeader) const {
+    int word{doHeader ? 10 : 0}, row{0};
+    if (doHeader)Serial.print(F("HEAD:"));
+    for (const uint8_t *p = buffer; word < length + (doHeader ? 10 : 0); ++p, ++word) {
         if (word % 16 == 0) {
             if (word != 0) Serial.print(F("\n"));
             Serial.printf(F("%04x: "), row);
