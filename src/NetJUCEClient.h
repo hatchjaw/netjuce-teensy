@@ -17,25 +17,39 @@
 #define MULTICAST_IP "226.6.38.226"
 #endif
 
-#ifndef REMOTE_PORT
-#define REMOTE_PORT 18999
+#ifndef DEFAULT_REMOTE_PORT
+#define DEFAULT_REMOTE_PORT 30000
 #endif
 
-#ifndef LOCAL_PORT
-#define LOCAL_PORT 18999
+#ifndef DEFAULT_LOCAL_PORT
+#define DEFAULT_LOCAL_PORT 15000
 #endif
 
 #include <Audio.h>
 #include <NativeEthernet.h>
-#include "PacketHeader.h"
 #include "CircularBuffer.h"
+#include "DatagramPacket.h"
+
+enum class DebugMode : uint32_t
+{
+    NONE = 1 << 0,
+    HEXDUMP_RECEIVE = 1 << 1,
+    HEXDUMP_SEND = 1 << 2,
+    HEXDUMP_AUDIO_OUT = 1 <<3
+};
+
+constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum DebugMode inValue )
+{
+    return (enum DebugMode)(uint32_t(selfValue) | uint32_t(inValue));
+}
 
 class NetJUCEClient : public AudioStream {
 public:
     explicit NetJUCEClient(
             IPAddress &multicastIPAddress,
-            uint16_t remotePort = REMOTE_PORT,
-            uint16_t localPort = LOCAL_PORT
+            uint16_t remotePort = DEFAULT_REMOTE_PORT,
+            uint16_t localPort = DEFAULT_LOCAL_PORT,
+            DebugMode debugMode = DebugMode::NONE
     );
 
     virtual ~NetJUCEClient();
@@ -45,6 +59,8 @@ public:
     bool isConnected() const;
 
     void connect(uint connectTimeoutMs = 1000);
+
+    void setDebugMode(DebugMode mode);
 
 private:
     const uint16_t kReceiveTimeoutMs{5000};
@@ -78,16 +94,17 @@ private:
      */
     uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
     uint64_t receivedCount{0};
-    PacketHeader header{
-        0,
-        AUDIO_BLOCK_SAMPLES,
-        SamplingRateT::SR44,
-        BitResolutionT::BIT16,
-        NUM_SOURCES
-    };
+
     bool receiveHeader{true}, useCircularBuffer{true};
     CircularBuffer<int16_t> audioBuffer;
     int16_t **audioBlock;
+
+    /**
+     * Something something outgoing packets
+     */
+    DatagramPacket outgoingPacket;
+
+    DebugMode debugMode;
 
     void send();
 };

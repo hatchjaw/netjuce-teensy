@@ -40,13 +40,14 @@ CircularBuffer<T>::~CircularBuffer() {
 
 template<typename T>
 void CircularBuffer<T>::clear() {
-//    for (int ch = 0; ch < kNumChannels; ++ch) {
-//        for (int s = 0; s < kLength; ++s) {
-//            buffer[ch][s] = 0;
-//        }
-//    }
+    // Why doesn't this work?
+//    memset(buffer[0], 0, kNumChannels * kLength * sizeof(T));
 
-    memset(*buffer, 0, kNumChannels * kLength * sizeof(T));
+    for (int ch = 0; ch < kNumChannels; ++ch) {
+        for (int s = 0; s < kLength; ++s) {
+            buffer[ch][s] = 0;
+        }
+    }
 
     readPos = kFloatLength * .25f;
     writeIndex = 0;
