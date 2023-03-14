@@ -25,17 +25,20 @@
 #define DEFAULT_LOCAL_PORT 15000
 #endif
 
+#define FIFO_SIZE (AUDIO_BLOCK_SAMPLES * 8)
+
 #include <Audio.h>
 #include <NativeEthernet.h>
+#include <map>
 #include "CircularBuffer.h"
 #include "DatagramPacket.h"
 
 enum class DebugMode : uint32_t
 {
-    NONE = 1 << 0,
-    HEXDUMP_RECEIVE = 1 << 1,
-    HEXDUMP_SEND = 1 << 2,
-    HEXDUMP_AUDIO_OUT = 1 <<3
+    NONE = 0,
+    HEXDUMP_RECEIVE = 1 << 0,
+    HEXDUMP_SEND = 1 << 1,
+    HEXDUMP_AUDIO_OUT = 1 << 2
 };
 
 constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum DebugMode inValue )
@@ -45,12 +48,11 @@ constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum D
 
 class NetJUCEClient : public AudioStream {
 public:
-    explicit NetJUCEClient(
-            IPAddress &multicastIPAddress,
-            uint16_t remotePort = DEFAULT_REMOTE_PORT,
-            uint16_t localPort = DEFAULT_LOCAL_PORT,
-            DebugMode debugMode = DebugMode::NONE
-    );
+    NetJUCEClient(IPAddress &networkAdapterIPAddress,
+                  IPAddress &multicastIPAddress,
+                  uint16_t remotePortNumber = DEFAULT_REMOTE_PORT,
+                  uint16_t localPortNumber = DEFAULT_LOCAL_PORT,
+                  DebugMode debugModeToUse = DebugMode::NONE);
 
     virtual ~NetJUCEClient();
 
@@ -73,21 +75,25 @@ private:
 
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
-    EthernetUDP udp;
+    EthernetUDP socket;
     /**
      * MAC address to assign to Teensy's ethernet shield.
      */
-    byte clientMAC[6]{};
+    byte mac[6]{};
+    /**
+     * IP address of the server...
+     */
+    IPAddress adapterIP;
     /**
      * IP to assign to Teensy.
      */
-    IPAddress clientIP{192, 168, 10, 0};
+    IPAddress clientIP;
     /**
      * IP of the multicast group to join.
      */
     IPAddress multicastIP;
     uint16_t remotePort, localPort;
-    bool connected{false};
+    bool joined{false}, connected{false};
     elapsedMillis receiveTimer{0};
     /**
      * Buffer for incoming packets.
@@ -95,8 +101,8 @@ private:
     uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
     uint64_t receivedCount{0};
 
-    bool receiveHeader{true}, useCircularBuffer{true};
     CircularBuffer<int16_t> audioBuffer;
+    std::map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
     int16_t **audioBlock;
 
     /**

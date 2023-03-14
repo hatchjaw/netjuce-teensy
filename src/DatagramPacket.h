@@ -66,6 +66,8 @@ public:
 
     size_t getSize() const;
 
+    void reset();
+
 private:
     PacketHeader header{};
     uint8_t *data;

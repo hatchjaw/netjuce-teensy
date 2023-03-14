@@ -5,14 +5,15 @@
 #define WAIT_INFINITE() BLOCK_WITH_FORCED_SEMICOLON(while (true) yield();)
 
 IPAddress multicastIP{226, 6, 38, 226};
-uint8_t mac[]{0x04, 0xe9, 0xe5, 0x12, 0xe1, 0x92};
+IPAddress adapterIP{192, 168, 10, 10};
 uint16_t localPort{DEFAULT_LOCAL_PORT};
 uint16_t remotePort{DEFAULT_REMOTE_PORT};
 
 AudioControlSGTL5000 audioShield;
 
 AudioOutputI2S out;
-NetJUCEClient client{multicastIP, remotePort, localPort, DebugMode::HEXDUMP_RECEIVE};
+NetJUCEClient client{adapterIP, multicastIP, remotePort, localPort,
+                     DebugMode::HEXDUMP_RECEIVE | DebugMode::HEXDUMP_SEND};
 
 AudioConnection patchCord1(client, 0, out, 0);
 AudioConnection patchCord2(client, 1, out, 1);

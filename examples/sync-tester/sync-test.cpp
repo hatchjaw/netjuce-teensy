@@ -13,12 +13,13 @@
 const uint16_t kLocalUdpPort = 8888;
 // Remote server IP address -- should match address in IPv4 settings.
 IPAddress multicastIP{226, 6, 38, 226};
+IPAddress adapterIP{192, 168, 10, 10};
 
 // Audio shield driver
 AudioControlSGTL5000 audioShield;
 AudioOutputI2S out;
 
-NetJUCEClient client{multicastIP};
+NetJUCEClient client{adapterIP, multicastIP};
 SyncTester st;
 
 // Send input from server back to server.

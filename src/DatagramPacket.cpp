@@ -5,7 +5,7 @@
 #include "DatagramPacket.h"
 
 DatagramPacket::DatagramPacket(int numChannels, int bufferSize, float sampleRate) {
-    bytesPerChannel = bufferSize * sizeof(int16_t);
+    bytesPerChannel = bufferSize * sizeof(int16_t); // TODO: generalise this.
     size = PACKET_HEADER_SIZE + numChannels * bytesPerChannel;
     data = new uint8_t[size];
 
@@ -72,4 +72,8 @@ size_t DatagramPacket::getSize() const {
 
 void DatagramPacket::writeAudioData(int channel, void *channelData) {
     memcpy(data + PACKET_HEADER_SIZE + channel * bytesPerChannel, channelData, bytesPerChannel);
+}
+
+void DatagramPacket::reset() {
+    header.SeqNumber = 0;
 }

@@ -6,20 +6,27 @@
 #include <TeensyID.h>
 #include <imxrt_hw.h>
 
-NetJUCEClient::NetJUCEClient(IPAddress &multicastIPAddress,
-                             uint16_t remotePort,
-                             uint16_t localPort,
-                             DebugMode debugMode) :
+NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
+                             IPAddress &multicastIPAddress,
+                             uint16_t remotePortNumber,
+                             uint16_t localPortNumber,
+                             DebugMode debugModeToUse) :
         AudioStream{NUM_SOURCES, new audio_block_t *[NUM_SOURCES]},
+        adapterIP{networkAdapterIPAddress},
+        clientIP{networkAdapterIPAddress},
         multicastIP{multicastIPAddress},
-        remotePort{remotePort},
-        localPort{localPort},
-        audioBuffer{NUM_SOURCES, AUDIO_BLOCK_SAMPLES * 32},
+        remotePort{remotePortNumber},
+        localPort{localPortNumber},
+        audioBuffer{NUM_SOURCES, FIFO_SIZE},
         audioBlock{new int16_t *[NUM_SOURCES]},
         outgoingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
-        debugMode(debugMode) {
-    teensyMAC(clientMAC);
-    clientIP[3] = clientMAC[5];
+        debugMode(debugModeToUse) {
+
+    teensyMAC(mac);
+
+    // TODO: check whether resulting clientIP is the same as the server.
+    // TODO: also check for collisions between clients... adjust as necessary?...
+    clientIP[3] = mac[5];
 
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
@@ -35,10 +42,12 @@ NetJUCEClient::~NetJUCEClient() {
 
 
 bool NetJUCEClient::begin() {
-    Serial.printf(F("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n"),
-                  clientMAC[0], clientMAC[1], clientMAC[2], clientMAC[3], clientMAC[4], clientMAC[5]);
+    Serial.printf("DEBUG MODE: %d\n", debugMode);
 
-    EthernetClass::begin(clientMAC, clientIP);
+    Serial.printf(F("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n"),
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    EthernetClass::begin(mac, clientIP);
 
     receiveTimer = 0;
 
@@ -66,7 +75,7 @@ bool NetJUCEClient::begin() {
 }
 
 bool NetJUCEClient::isConnected() const {
-    return connected;
+    return joined;
 }
 
 void NetJUCEClient::connect(uint connectTimeoutMs) {
@@ -80,15 +89,14 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
     Serial.print(multicastIP);
     Serial.printf(F(":%d... "), localPort);
 
-    auto joined{udp.beginMulticast(multicastIP, remotePort)};
+    joined = socket.beginMulticast(multicastIP, remotePort);
 
     if (joined) {
         Serial.println(F("Success!"));
         receivedCount = 0;
-        connected = true;
+        outgoingPacket.reset();
     } else {
         Serial.println(F("Failed."));
-        connected = false;
         delay(connectTimeoutMs);
     }
 }
@@ -102,83 +110,77 @@ void NetJUCEClient::update(void) {
 }
 
 void NetJUCEClient::receive() {
-    if (!connected) {
-        memset(packetBuffer, 0, sizeof packetBuffer);
-        return;
-    }
+    if (!joined) return;
 
     int packetSize;
 
-    if (useCircularBuffer) {
-        while ((packetSize = udp.parsePacket()) > 0) {
-            ++receivedCount;
-            receiveTimer = 0;
+    while ((packetSize = socket.parsePacket()) > 0) {
+        ++receivedCount;
+        receiveTimer = 0;
 
-            udp.read(packetBuffer, packetSize);
+        socket.read(packetBuffer, packetSize);
 
-            auto headerIn{reinterpret_cast<DatagramPacket::PacketHeader *>(packetBuffer)};
-            auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
+        auto headerIn{reinterpret_cast<DatagramPacket::PacketHeader *>(packetBuffer)};
+        auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
 
-            if (debugMode == DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
+        if (debugMode >= DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
 //                    Serial.println(*headerIn);
-                Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
-                              headerIn->SeqNumber,
-                              headerIn->BufferSize,
-                              headerIn->NumChannels);
-                Serial.print("From: ");
-                Serial.print(udp.remoteIP());
-                Serial.printf(":%d\n", udp.remotePort());
-                Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
-                hexDump(packetBuffer, packetSize, true);
+            Serial.println("Connected peers:");
+            for (auto peer: audioBuffers) {
+                Serial.println(IPAddress{peer.first});
             }
-
-            // Assume 16-bit; TODO: should generalise
-            const int16_t *audio[headerIn->NumChannels];
-            for (int ch = 0; ch < headerIn->NumChannels; ++ch) {
-                audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + ch * bytesPerChannel);
-            }
-            audioBuffer.write(audio, headerIn->BufferSize);
-        }
-    } else {
-        auto didRead{false};
-
-        if ((packetSize = udp.parsePacket()) > 0) {
-            ++receivedCount;
-            didRead = true;
-
-//            if (packetSize != 128) Serial.printf("Packet size: %d\n", packetSize);
-            udp.read(packetBuffer, packetSize);
-            receiveTimer = 0;
+            Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
+                          headerIn->SeqNumber,
+                          headerIn->BufferSize,
+                          headerIn->NumChannels);
+            Serial.print("From: ");
+            Serial.print(socket.remoteIP());
+            Serial.printf(":%d\n", socket.remotePort());
+            Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
+            hexDump(packetBuffer, packetSize, true);
         }
 
-        if (0 == didRead) {
-            Serial.println(F("Zero packets read."));
-            memset(packetBuffer, 0, sizeof packetBuffer);
-        } else {
-            auto headerIn{reinterpret_cast<DatagramPacket::PacketHeader *>(packetBuffer)};
-            if (headerIn->SeqNumber % 10000 <= 1) {
-                Serial.printf(F("Seq. number %d\n"), headerIn->SeqNumber);
-                hexDump(packetBuffer, packetSize);
-            }
+        // Assume 16-bit; TODO: should generalise
+        const int16_t *audio[headerIn->NumChannels];
+        for (int ch = 0; ch < headerIn->NumChannels; ++ch) {
+            audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + ch * bytesPerChannel);
         }
+        audioBuffer.write(audio, headerIn->BufferSize);
+
+        // Write to appropriate buffer.
+        auto remoteIP{static_cast<uint32_t>(socket.remoteIP())};
+        auto it{audioBuffers.find(remoteIP)};
+        if (it == audioBuffers.end()) {
+            connected = true;
+            it = audioBuffers.insert(std::make_pair(remoteIP, new CircularBuffer<int16_t>(NUM_SOURCES,
+                                                                                          FIFO_SIZE))).first;
+        }
+        it->second->write(audio, headerIn->BufferSize);
     }
 
+    // TODO: check whether nothing received from a given peer...
     if (receiveTimer > kReceiveTimeoutMs) {
         Serial.printf(F("Nothing received for %d ms. Stopping.\n"), kReceiveTimeoutMs);
-        udp.stop();
+        socket.stop();
         audioBuffer.clear();
-        connected = false;
+        for (auto b: audioBuffers) {
+            delete b.second;
+        }
+        audioBuffers.clear();
         receiveTimer = 0;
+        // TODO: fix this ambiguous situation
+        joined = false;
+        connected = false;
     }
 }
 
 void NetJUCEClient::doAudioOutput() {
-    if (useCircularBuffer) {
-        audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
-        if (debugMode == DebugMode::HEXDUMP_AUDIO_OUT && receivedCount > 0 && receivedCount % 10000 <= 1) {
-            Serial.println(F("Audio out, channel 1"));
-            hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 64);
-        }
+//    audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
+    if (connected) audioBuffers.begin()->second->read(audioBlock, AUDIO_BLOCK_SAMPLES);
+
+    if (debugMode >= DebugMode::HEXDUMP_AUDIO_OUT && receivedCount > 0 && receivedCount % 10000 <= 1) {
+        Serial.println(F("Audio out, channel 1"));
+        hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 64);
     }
 
     audio_block_t *outBlock[NUM_SOURCES];
@@ -188,20 +190,51 @@ void NetJUCEClient::doAudioOutput() {
         outBlock[ch] = allocate();
         if (outBlock[ch]) {
             // Copy the samples to the output block.
-            if (useCircularBuffer) {
-                memcpy(outBlock[ch]->data, audioBlock[ch], channelFrameSize);
-            } else {
-                memcpy(outBlock[ch]->data,
-                       receiveHeader ?
-                       reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + channelFrameSize * ch) :
-                       reinterpret_cast<int16_t *>(packetBuffer + channelFrameSize * ch),
-                       channelFrameSize);
-            }
+            memcpy(outBlock[ch]->data, audioBlock[ch], channelFrameSize);
+
             // Finish up.
             transmit(outBlock[ch], ch);
             release(outBlock[ch]);
         }
     }
+}
+
+void NetJUCEClient::send() {
+    if (!joined) return;
+
+//    // Get the location in the UDP buffer to which audio samples should be
+//    // written.
+//    uint8_t packet[kUdpPacketSize];
+//    uint8_t *pos = packet + PACKET_HEADER_SIZE;
+
+    // Copy audio to the outgoing packet.
+    audio_block_t *inBlock[num_inputs];
+    for (int channel = 0; channel < num_inputs; channel++) {
+        inBlock[channel] = receiveReadOnly(channel);
+        // Only proceed if a block was returned, i.e. something is connected
+        // to one of this object's input channels.
+        if (inBlock[channel]) {
+            outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
+            release(inBlock[channel]);
+        }
+    }
+
+    // TODO: check for failures and such.
+    outgoingPacket.writeHeader();
+    socket.beginPacket(multicastIP, remotePort);
+    socket.write(outgoingPacket.getData(), outgoingPacket.getSize());
+    socket.endPacket();
+
+    if (debugMode >= DebugMode::HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
+        Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
+        hexDump(outgoingPacket.getData(), static_cast<int>(outgoingPacket.getSize()), true);
+    }
+
+    outgoingPacket.incrementSeqNumber();
+}
+
+void NetJUCEClient::setDebugMode(DebugMode mode) {
+    debugMode = mode;
 }
 
 void NetJUCEClient::hexDump(const uint8_t *buffer, int length, bool doHeader) const {
@@ -219,68 +252,3 @@ void NetJUCEClient::hexDump(const uint8_t *buffer, int length, bool doHeader) co
     }
     Serial.println(F("\n"));
 }
-
-void NetJUCEClient::send() {
-    if (!connected) return;
-
-//    // Get the location in the UDP buffer to which audio samples should be
-//    // written.
-//    uint8_t packet[kUdpPacketSize];
-//    uint8_t *pos = packet + PACKET_HEADER_SIZE;
-
-    // Copy audio to the outgoing packet.
-    audio_block_t *inBlock[num_inputs];
-    for (int channel = 0; channel < num_inputs; channel++) {
-        inBlock[channel] = receiveReadOnly(channel);
-        // Only proceed if a block was returned, i.e. something is connected
-        // to one of this object's input channels.
-        if (inBlock[channel]) {
-            outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
-//            memcpy(pos, inBlock[channel]->data, CHANNEL_FRAME_SIZE);
-//            pos += CHANNEL_FRAME_SIZE;
-            release(inBlock[channel]);
-        }
-    }
-
-//    packetHeader.SeqNumber++;
-//    packetHeader.TimeStamp += packetInterval;
-//    packetInterval = 0;
-
-//    // Copy the packet header to the UDP buffer.
-//    memcpy(packet, &packetHeader, PACKET_HEADER_SIZE);
-//
-//    // Send the packet.
-//    beginPacket(serverIP, serverUdpPort);
-//    size_t written = write(packet, kUdpPacketSize);
-//    if (written != kUdpPacketSize) {
-//        written += write(packet + written, kUdpPacketSize - written);
-//        if (written != kUdpPacketSize) {
-//            Serial.printf("JackTripClient: Net buffer is too small (wrote %d of %d bytes)\n", written, kUdpPacketSize);
-//        }
-//    }
-//    auto result = endPacket();
-//    if (0 == result) {
-//        Serial.println("JackTripClient: failed to send a packet.");
-//    }
-//
-//    packetStats.registerSend(packetHeader);
-//
-//    ++header.SeqNumber;
-
-    outgoingPacket.writeHeader();
-    udp.beginPacket(multicastIP, remotePort); // TODO: maybe this should be 'sendPort' instead
-    udp.write(outgoingPacket.getData(), outgoingPacket.getSize());
-    udp.endPacket();
-
-    if (debugMode == DebugMode::HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
-        Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
-        hexDump(outgoingPacket.getData(), static_cast<int>(outgoingPacket.getSize()), true);
-    }
-
-    outgoingPacket.incrementSeqNumber();
-}
-
-void NetJUCEClient::setDebugMode(DebugMode mode) {
-    debugMode = mode;
-}
-
