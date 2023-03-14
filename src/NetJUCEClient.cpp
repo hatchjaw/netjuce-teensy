@@ -125,8 +125,10 @@ void NetJUCEClient::receive() {
                               headerIn->SeqNumber,
                               headerIn->BufferSize,
                               headerIn->NumChannels);
+                Serial.print("From: ");
+                Serial.print(udp.remoteIP());
+                Serial.printf(":%d\n", udp.remotePort());
                 Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
-                Serial.printf("Seq: %d\n", headerIn->SeqNumber);
                 hexDump(packetBuffer, packetSize, true);
             }
 
@@ -266,7 +268,7 @@ void NetJUCEClient::send() {
 //    ++header.SeqNumber;
 
     outgoingPacket.writeHeader();
-    udp.beginPacket(multicastIP, remotePort);
+    udp.beginPacket(multicastIP, remotePort); // TODO: maybe this should be 'sendPort' instead
     udp.write(outgoingPacket.getData(), outgoingPacket.getSize());
     udp.endPacket();
 

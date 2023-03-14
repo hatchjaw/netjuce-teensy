@@ -6,16 +6,18 @@
 
 IPAddress multicastIP{226, 6, 38, 226};
 uint8_t mac[]{0x04, 0xe9, 0xe5, 0x12, 0xe1, 0x92};
-uint16_t localPort{18999};
-uint16_t remotePort{18999};
+uint16_t localPort{DEFAULT_LOCAL_PORT};
+uint16_t remotePort{DEFAULT_REMOTE_PORT};
 
 AudioControlSGTL5000 audioShield;
 
 AudioOutputI2S out;
-NetJUCEClient client{multicastIP, remotePort, localPort};
+NetJUCEClient client{multicastIP, remotePort, localPort, DebugMode::HEXDUMP_RECEIVE};
 
 AudioConnection patchCord1(client, 0, out, 0);
 AudioConnection patchCord2(client, 1, out, 1);
+AudioConnection patchCord3(client, 0, client, 0);
+AudioConnection patchCord4(client, 1, client, 1);
 
 elapsedMillis usageReportTimer;
 constexpr uint32_t USAGE_REPORT_INTERVAL{5000};
