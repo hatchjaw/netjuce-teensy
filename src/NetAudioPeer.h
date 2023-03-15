@@ -2,8 +2,8 @@
 // Created by tar on 3/15/23.
 //
 
-#ifndef NETJUCE_TEENSY_PEER_H
-#define NETJUCE_TEENSY_PEER_H
+#ifndef NETJUCE_TEENSY_NETAUDIOPEER_H
+#define NETJUCE_TEENSY_NETAUDIOPEER_H
 
 #include <Audio.h>
 #include <NativeEthernet.h>
@@ -11,9 +11,9 @@
 #include "DatagramAudioPacket.h"
 #include <memory>
 
-class Peer {
+class NetAudioPeer {
 public:
-    explicit Peer(DatagramAudioPacket firstPacket);
+    explicit NetAudioPeer(DatagramAudioPacket firstPacket);
 
     void handlePacket(DatagramAudioPacket &p);
 
@@ -30,4 +30,4 @@ private:
 };
 
 
-#endif //NETJUCE_TEENSY_PEER_H
+#endif //NETJUCE_TEENSY_NETAUDIOPEER_H

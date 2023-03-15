@@ -31,7 +31,7 @@
 #include <memory>
 #include "CircularBuffer.h"
 #include "DatagramAudioPacket.h"
-#include "Peer.h"
+#include "NetAudioPeer.h"
 
 enum class DebugMode : uint32_t
 {
@@ -75,6 +75,8 @@ private:
 
     void send();
 
+    void checkConnectivity();
+
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
     EthernetUDP socket;
@@ -108,7 +110,7 @@ private:
 //    std::unordered_map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
     // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
     // https://en.cppreference.com/w/cpp/container/unordered_map
-    std::unordered_map<uint32_t, std::unique_ptr<Peer>> peers;
+    std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>> peers;
     int16_t **audioBlock;
 
     /**

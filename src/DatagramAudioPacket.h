@@ -48,12 +48,27 @@ public:
         uint16_t Port;
     };
 
+    /**
+     * Prepare a new packet for sending.
+     * @param numChannels
+     * @param bufferSize
+     * @param sampleRate
+     */
     DatagramAudioPacket(int numChannels, int bufferSize, float sampleRate);
 
+    /**
+     * Build a new packet from incoming raw data.
+     * @param peerIP
+     * @param peerPort
+     * @param packetData
+     */
     DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData);
 
     ~DatagramAudioPacket();
 
+    /**
+     * Increment this packet's header's sequence number.
+     */
     void incrementSeqNumber();
 
     void writeAudioData(int channel, void *channelData);
@@ -68,16 +83,35 @@ public:
      */
     uint8_t *getRawAudioData();
 
+    /**
+     * Read audio data into a buffer.
+     * @param buffer
+     */
     void getAudioData(const int16_t **buffer);
 
     int getSeqNumber() const;
 
+    /**
+     * Get a pointer to this packet's raw data.
+     * @return
+     */
     uint8_t *getData();
 
+    /**
+     * Get the size of this packet in bytes.
+     * @return
+     */
     size_t getSize() const;
 
+    /**
+     * Get origin info for this packet, i.e. the IP and port it came from.
+     * @return
+     */
     DatagramAudioPacket::Origin getOrigin();
 
+    /**
+     * Reset the packet. Set sequence number to zero (etc.)
+     */
     void reset();
 
     uint8_t getNumAudioChannels() const;

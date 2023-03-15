@@ -104,6 +104,8 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 void NetJUCEClient::update(void) {
     receive();
 
+    checkConnectivity();
+
     doAudioOutput();
 
     send();
@@ -151,7 +153,7 @@ void NetJUCEClient::receive() {
         if (iter == peers.end()) { // If an unknown peer...
             // ... there's definitely at least one peer now.
             connected = true;
-            iter = peers.insert(std::make_pair(rawIP, std::make_unique<Peer>(packet))).first;
+            iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(packet))).first;
             auto o{iter->second->getOrigin()};
             Serial.print("\nPeer ");
             Serial.print(o.IP);
@@ -177,7 +179,9 @@ void NetJUCEClient::receive() {
             hexDump(packetBuffer, packetSize, true);
         }
     }
+}
 
+void NetJUCEClient::checkConnectivity() {
     if (peerCheckTimer > 1000) {
         peerCheckTimer = 0;
         for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
