@@ -2,13 +2,14 @@
 // Created by tar on 3/13/23.
 //
 
-#ifndef NETJUCE_TEENSY_DATAGRAMPACKET_H
-#define NETJUCE_TEENSY_DATAGRAMPACKET_H
+#ifndef NETJUCE_TEENSY_DATAGRAMAUDIOPACKET_H
+#define NETJUCE_TEENSY_DATAGRAMAUDIOPACKET_H
 
 #include <Arduino.h>
 #include <cstdlib>
+#include <IPAddress.h>
 
-class DatagramPacket {
+class DatagramAudioPacket {
 public:
     enum BitResolutionT {
         BIT8 = 1,
@@ -42,9 +43,16 @@ public:
 //    }
     };
 
-    DatagramPacket(int numChannels, int bufferSize, float sampleRate);
+    struct Origin {
+        IPAddress IP;
+        uint16_t Port;
+    };
 
-    ~DatagramPacket();
+    DatagramAudioPacket(int numChannels, int bufferSize, float sampleRate);
+
+    DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData);
+
+    ~DatagramAudioPacket();
 
     void incrementSeqNumber();
 
@@ -58,7 +66,9 @@ public:
     /**
      * Get a pointer to the audio data portion of the packet.
      */
-    uint8_t *getAudioData();
+    uint8_t *getRawAudioData();
+
+    void getAudioData(const int16_t **buffer);
 
     int getSeqNumber() const;
 
@@ -66,14 +76,23 @@ public:
 
     size_t getSize() const;
 
+    DatagramAudioPacket::Origin getOrigin();
+
     void reset();
 
+    uint8_t getNumAudioChannels() const;
+
+    uint16_t getBufferSize() const;
+
 private:
+    Origin origin;
     PacketHeader header{};
     uint8_t *data;
     size_t size, bytesPerChannel;
+
+    void parseHeader();
 };
 
-#define PACKET_HEADER_SIZE sizeof(DatagramPacket::PacketHeader)
+#define PACKET_HEADER_SIZE sizeof(DatagramAudioPacket::PacketHeader)
 
-#endif //NETJUCE_TEENSY_DATAGRAMPACKET_H
+#endif //NETJUCE_TEENSY_DATAGRAMAUDIOPACKET_H

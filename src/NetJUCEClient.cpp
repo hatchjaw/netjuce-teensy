@@ -17,7 +17,7 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
         multicastIP{multicastIPAddress},
         remotePort{remotePortNumber},
         localPort{localPortNumber},
-        audioBuffer{NUM_SOURCES, FIFO_SIZE},
+//        audioBuffer{NUM_SOURCES, CIRCULAR_BUFFER_SIZE},
         audioBlock{new int16_t *[NUM_SOURCES]},
         outgoingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
         debugMode(debugModeToUse) {
@@ -116,17 +116,54 @@ void NetJUCEClient::receive() {
 
     while ((packetSize = socket.parsePacket()) > 0) {
         ++receivedCount;
+        connected = true;
         receiveTimer = 0;
 
         socket.read(packetBuffer, packetSize);
 
-        auto headerIn{reinterpret_cast<DatagramPacket::PacketHeader *>(packetBuffer)};
+        auto remoteIP{socket.remoteIP()};
+        auto port{socket.remotePort()};
+        auto rawIP{static_cast<uint32_t>(remoteIP)};
+
+        auto headerIn{reinterpret_cast<DatagramAudioPacket::PacketHeader *>(packetBuffer)};
         auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
 
+//        // Naive approach
+//        // Assume 16-bit; TODO: should generalise
+//        const int16_t *audio[headerIn->NumChannels];
+//        for (int ch = 0; ch < headerIn->NumChannels; ++ch) {
+//            audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + ch * bytesPerChannel);
+//        }
+//        audioBuffer.write(audio, headerIn->BufferSize);
+
+//        // Using map of buffers:
+//        auto it{audioBuffers.find(rawIP)};
+//        if (it == audioBuffers.end()) {
+//            connected = true;
+//            it = audioBuffers.insert(std::make_pair(remoteIP, new CircularBuffer<int16_t>(NUM_SOURCES,
+//                                                                                          CIRCULAR_BUFFER_SIZE))).first;
+//        }
+//        it->second->write(audio, headerIn->BufferSize);
+
+        // Using map of Peers:
+        DatagramAudioPacket packet{remoteIP, port, packetBuffer};
+        auto iter{peers.find(rawIP)};
+        if (iter == peers.end()) { // If an unknown peer...
+            // ... there's definitely at least one peer now.
+            connected = true;
+            iter = peers.insert(std::make_pair(rawIP, std::make_unique<Peer>(packet))).first;
+            auto o{iter->second->getOrigin()};
+            Serial.print("\nPeer ");
+            Serial.print(o.IP);
+            Serial.printf(":%" PRIu16, o.Port);
+            Serial.print(" connected.\n\n");
+        }
+        iter->second->handlePacket(packet);
+
+        // TODO: move into Packet or Peer class?
         if (debugMode >= DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
-//                    Serial.println(*headerIn);
             Serial.println("Connected peers:");
-            for (auto peer: audioBuffers) {
+            for (auto &peer: peers) {
                 Serial.println(IPAddress{peer.first});
             }
             Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
@@ -139,34 +176,33 @@ void NetJUCEClient::receive() {
             Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
             hexDump(packetBuffer, packetSize, true);
         }
-
-        // Assume 16-bit; TODO: should generalise
-        const int16_t *audio[headerIn->NumChannels];
-        for (int ch = 0; ch < headerIn->NumChannels; ++ch) {
-            audio[ch] = reinterpret_cast<int16_t *>(packetBuffer + PACKET_HEADER_SIZE + ch * bytesPerChannel);
-        }
-        audioBuffer.write(audio, headerIn->BufferSize);
-
-        // Write to appropriate buffer.
-        auto remoteIP{static_cast<uint32_t>(socket.remoteIP())};
-        auto it{audioBuffers.find(remoteIP)};
-        if (it == audioBuffers.end()) {
-            connected = true;
-            it = audioBuffers.insert(std::make_pair(remoteIP, new CircularBuffer<int16_t>(NUM_SOURCES,
-                                                                                          FIFO_SIZE))).first;
-        }
-        it->second->write(audio, headerIn->BufferSize);
     }
 
-    // TODO: check whether nothing received from a given peer...
+    if (peerCheckTimer > 1000) {
+        peerCheckTimer = 0;
+        for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
+            ++next;
+            if (!it->second->isConnected()) {
+                auto o{it->second->getOrigin()};
+                Serial.print("\nPeer ");
+                Serial.print(o.IP);
+                Serial.printf(":%" PRIu16, o.Port);
+                Serial.print(" disconnected.\n\n");
+                peers.erase(it);
+                connected = !peers.empty();
+            }
+        }
+    }
+
     if (receiveTimer > kReceiveTimeoutMs) {
         Serial.printf(F("Nothing received for %d ms. Stopping.\n"), kReceiveTimeoutMs);
         socket.stop();
-        audioBuffer.clear();
-        for (auto b: audioBuffers) {
-            delete b.second;
-        }
-        audioBuffers.clear();
+//        audioBuffer.clear();
+//        for (auto b: audioBuffers) {
+//            delete b.second;
+//        }
+//        audioBuffers.clear();
+        peers.clear();
         receiveTimer = 0;
         // TODO: fix this ambiguous situation
         joined = false;
@@ -175,8 +211,24 @@ void NetJUCEClient::receive() {
 }
 
 void NetJUCEClient::doAudioOutput() {
-//    audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
-    if (connected) audioBuffers.begin()->second->read(audioBlock, AUDIO_BLOCK_SAMPLES);
+//    if (connected) audioBuffer.read(audioBlock, AUDIO_BLOCK_SAMPLES);
+//    if (connected) audioBuffers.begin()->second->read(audioBlock, AUDIO_BLOCK_SAMPLES);
+//    if (connected) peers.begin()->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
+    if (connected) {
+        // Do output if the server is found.
+        // TODO: something about this...
+        auto peer{peers.find(adapterIP)};
+        if (peer != peers.end()) {
+            peer->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
+        }
+    } else {
+//        memset(audioBlock[0], 0, NUM_SOURCES * AUDIO_BLOCK_SAMPLES * sizeof(int16_t));
+        for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+            for (int s = 0; s < AUDIO_BLOCK_SAMPLES; ++s) {
+                audioBlock[ch][s] = 0;
+            }
+        }
+    }
 
     if (debugMode >= DebugMode::HEXDUMP_AUDIO_OUT && receivedCount > 0 && receivedCount % 10000 <= 1) {
         Serial.println(F("Audio out, channel 1"));
@@ -201,11 +253,6 @@ void NetJUCEClient::doAudioOutput() {
 
 void NetJUCEClient::send() {
     if (!joined) return;
-
-//    // Get the location in the UDP buffer to which audio samples should be
-//    // written.
-//    uint8_t packet[kUdpPacketSize];
-//    uint8_t *pos = packet + PACKET_HEADER_SIZE;
 
     // Copy audio to the outgoing packet.
     audio_block_t *inBlock[num_inputs];

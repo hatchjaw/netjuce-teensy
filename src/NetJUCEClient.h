@@ -25,13 +25,13 @@
 #define DEFAULT_LOCAL_PORT 15000
 #endif
 
-#define FIFO_SIZE (AUDIO_BLOCK_SAMPLES * 8)
-
 #include <Audio.h>
 #include <NativeEthernet.h>
-#include <map>
+#include <unordered_map>
+#include <memory>
 #include "CircularBuffer.h"
-#include "DatagramPacket.h"
+#include "DatagramAudioPacket.h"
+#include "Peer.h"
 
 enum class DebugMode : uint32_t
 {
@@ -73,6 +73,8 @@ private:
 
     void doAudioOutput();
 
+    void send();
+
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
     EthernetUDP socket;
@@ -94,25 +96,27 @@ private:
     IPAddress multicastIP;
     uint16_t remotePort, localPort;
     bool joined{false}, connected{false};
-    elapsedMillis receiveTimer{0};
+    elapsedMillis receiveTimer{0}, peerCheckTimer{0};
     /**
      * Buffer for incoming packets.
      */
     uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
     uint64_t receivedCount{0};
 
-    CircularBuffer<int16_t> audioBuffer;
-    std::map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
+//    CircularBuffer<int16_t> audioBuffer;
+//    std::map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
+//    std::unordered_map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
+    // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
+    // https://en.cppreference.com/w/cpp/container/unordered_map
+    std::unordered_map<uint32_t, std::unique_ptr<Peer>> peers;
     int16_t **audioBlock;
 
     /**
      * Something something outgoing packets
      */
-    DatagramPacket outgoingPacket;
+    DatagramAudioPacket outgoingPacket;
 
     DebugMode debugMode;
-
-    void send();
 };
 
 

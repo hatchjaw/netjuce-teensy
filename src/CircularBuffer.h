@@ -5,6 +5,8 @@
 #ifndef NETJUCE_TEENSY_CIRCULARBUFFER_H
 #define NETJUCE_TEENSY_CIRCULARBUFFER_H
 
+#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 4)
+
 #include <Arduino.h>
 #include "SmoothedValue.h"
 
