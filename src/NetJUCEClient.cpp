@@ -87,9 +87,9 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 
     Serial.print(F("Joining multicast group at "));
     Serial.print(multicastIP);
-    Serial.printf(F(":%d... "), localPort);
+    Serial.printf(F(", listening on port %d... "), localPort);
 
-    joined = socket.beginMulticast(multicastIP, remotePort);
+    joined = socket.beginMulticast(multicastIP, localPort);
 
     if (joined) {
         Serial.println(F("Success!"));
@@ -256,7 +256,7 @@ void NetJUCEClient::doAudioOutput() {
 }
 
 void NetJUCEClient::send() {
-    if (!joined) return;
+    if (!joined || !connected) return;
 
     // Copy audio to the outgoing packet.
     audio_block_t *inBlock[num_inputs];

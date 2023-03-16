@@ -18,11 +18,11 @@
 #endif
 
 #ifndef DEFAULT_REMOTE_PORT
-#define DEFAULT_REMOTE_PORT 30000
+#define DEFAULT_REMOTE_PORT 41814
 #endif
 
 #ifndef DEFAULT_LOCAL_PORT
-#define DEFAULT_LOCAL_PORT 15000
+#define DEFAULT_LOCAL_PORT 14841
 #endif
 
 #include <Audio.h>
