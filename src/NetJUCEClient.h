@@ -113,10 +113,7 @@ private:
     std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>> peers;
     int16_t **audioBlock;
 
-    /**
-     * Something something outgoing packets
-     */
-    DatagramAudioPacket outgoingPacket;
+    DatagramAudioPacket outgoingPacket, incomingPacket;
 
     DebugMode debugMode;
 };

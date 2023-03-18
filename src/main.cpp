@@ -7,13 +7,13 @@
 IPAddress multicastIP{226, 6, 38, 226};
 IPAddress adapterIP{192, 168, 10, 10};
 uint16_t localPort{DEFAULT_LOCAL_PORT};
-uint16_t remotePort{DEFAULT_REMOTE_PORT};
+uint16_t remotePort{DEFAULT_LOCAL_PORT}; // Use same port for promiscuous mode
 
 AudioControlSGTL5000 audioShield;
 
 AudioOutputI2S out;
 NetJUCEClient client{adapterIP, multicastIP, remotePort, localPort,
-                     DebugMode::HEXDUMP_SEND};
+                     DebugMode::NONE};
 
 AudioConnection patchCord1(client, 0, out, 0);
 AudioConnection patchCord2(client, 1, out, 1);

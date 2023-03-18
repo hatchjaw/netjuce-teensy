@@ -56,15 +56,17 @@ public:
      */
     DatagramAudioPacket(int numChannels, int bufferSize, float sampleRate);
 
-    /**
-     * Build a new packet from incoming raw data.
-     * @param peerIP
-     * @param peerPort
-     * @param packetData
-     */
-    DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData);
+//    /**
+//     * Build a new packet from incoming raw data.
+//     * @param peerIP
+//     * @param peerPort
+//     * @param packetData
+//     */
+//    DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData);
 
     ~DatagramAudioPacket();
+
+    void fromRawPacketData(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData);
 
     /**
      * Increment this packet's header's sequence number.
@@ -119,6 +121,20 @@ public:
     uint16_t getBufferSize() const;
 
 private:
+//    // Copy constructor.
+//    DatagramAudioPacket(const DatagramAudioPacket &p) :
+//            data(new uint8_t(*p.data)),
+//            size(p.size),
+//            bytesPerChannel(p.bytesPerChannel) {}
+//
+//    // Assignment operator.
+//    DatagramAudioPacket &operator=(const DatagramAudioPacket &p) {
+//        if (this != &p) {
+//            *data = *p.data;
+//        }
+//        return *this;
+//    }
+
     Origin origin;
     PacketHeader header{};
     uint8_t *data;

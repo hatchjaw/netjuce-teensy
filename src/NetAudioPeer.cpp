@@ -4,11 +4,15 @@
 
 #include "NetAudioPeer.h"
 
-
-NetAudioPeer::NetAudioPeer(DatagramAudioPacket firstPacket) :
+NetAudioPeer::NetAudioPeer(DatagramAudioPacket &firstPacket) :
         origin(firstPacket.getOrigin()),
-        receiveTimer(0) {
-    audioBuffer = std::make_unique<CircularBuffer<int16_t>>(firstPacket.getNumAudioChannels(), CIRCULAR_BUFFER_SIZE);
+        receiveTimer(0),
+        audioBuffer(std::make_unique<CB16>(
+                firstPacket.getNumAudioChannels(),
+                CIRCULAR_BUFFER_SIZE,
+                CB16::ReadMode::RESAMPLE,
+                CB16::DebugMode::RW_DELTA_VISUALISER)
+        ) {
 }
 
 void NetAudioPeer::handlePacket(DatagramAudioPacket &p) {
@@ -24,7 +28,7 @@ void NetAudioPeer::getNextAudioBlock(int16_t **bufferToFill, int numSamples) {
 }
 
 bool NetAudioPeer::isConnected() {
-    return receiveTimer < 2500;
+    return receiveTimer < 1000;
 }
 
 const DatagramAudioPacket::Origin &NetAudioPeer::getOrigin() const {

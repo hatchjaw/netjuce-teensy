@@ -11,9 +11,11 @@
 #include "DatagramAudioPacket.h"
 #include <memory>
 
+using CB16 = CircularBuffer<int16_t>;
+
 class NetAudioPeer {
 public:
-    explicit NetAudioPeer(DatagramAudioPacket firstPacket);
+    NetAudioPeer(DatagramAudioPacket &firstPacket);
 
     void handlePacket(DatagramAudioPacket &p);
 

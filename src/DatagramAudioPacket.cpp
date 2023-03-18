@@ -4,13 +4,13 @@
 
 #include "DatagramAudioPacket.h"
 
-DatagramAudioPacket::DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData) :
-        origin{peerIP, peerPort},
-        data{packetData} {
-    parseHeader();
-    bytesPerChannel = header.BufferSize * sizeof(int16_t);
-    size = PACKET_HEADER_SIZE + header.NumChannels * bytesPerChannel;
-}
+//DatagramAudioPacket::DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData) :
+//        origin{peerIP, peerPort},
+//        data{packetData} {
+//    parseHeader();
+//    bytesPerChannel = header.BufferSize * sizeof(int16_t);
+//    size = PACKET_HEADER_SIZE + header.NumChannels * bytesPerChannel;
+//}
 
 DatagramAudioPacket::DatagramAudioPacket(int numChannels, int bufferSize, float sampleRate) {
     bytesPerChannel = bufferSize * sizeof(int16_t); // TODO: generalise this.
@@ -50,9 +50,16 @@ DatagramAudioPacket::DatagramAudioPacket(int numChannels, int bufferSize, float 
 }
 
 DatagramAudioPacket::~DatagramAudioPacket() {
-    // OK... so this is a bad idea because data is a copy of a pointer that resides outside of this class...
-//    std::free(data);
-//    data = nullptr;
+    delete data;
+}
+
+void DatagramAudioPacket::fromRawPacketData(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData) {
+    origin = {peerIP, peerPort};
+    header = *reinterpret_cast<PacketHeader *>(packetData);
+    bytesPerChannel = header.BufferSize * sizeof(int16_t);
+    // TODO: check whether the new size is different, resize data if necessary.
+    size = PACKET_HEADER_SIZE + header.NumChannels * bytesPerChannel;
+    memcpy(data, packetData, size);
 }
 
 void DatagramAudioPacket::incrementSeqNumber() {

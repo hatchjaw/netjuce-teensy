@@ -20,6 +20,7 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
 //        audioBuffer{NUM_SOURCES, CIRCULAR_BUFFER_SIZE},
         audioBlock{new int16_t *[NUM_SOURCES]},
         outgoingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
+        incomingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
         debugMode(debugModeToUse) {
 
     teensyMAC(mac);
@@ -48,8 +49,6 @@ bool NetJUCEClient::begin() {
                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     EthernetClass::begin(mac, clientIP);
-
-    receiveTimer = 0;
 
 //    //PLL:
 //    int fs = 44150.f;
@@ -93,6 +92,7 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 
     if (joined) {
         Serial.println(F("Success!"));
+        receiveTimer = 0;
         receivedCount = 0;
         outgoingPacket.reset();
     } else {
@@ -148,19 +148,20 @@ void NetJUCEClient::receive() {
 //        it->second->write(audio, headerIn->BufferSize);
 
         // Using map of Peers:
-        DatagramAudioPacket packet{remoteIP, port, packetBuffer};
+//        DatagramAudioPacket packet{remoteIP, port, packetBuffer};
+        incomingPacket.fromRawPacketData(remoteIP, port, packetBuffer);
         auto iter{peers.find(rawIP)};
         if (iter == peers.end()) { // If an unknown peer...
             // ... there's definitely at least one peer now.
             connected = true;
-            iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(packet))).first;
+            iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(incomingPacket))).first;
             auto o{iter->second->getOrigin()};
             Serial.print("\nPeer ");
             Serial.print(o.IP);
             Serial.printf(":%" PRIu16, o.Port);
             Serial.print(" connected.\n\n");
         }
-        iter->second->handlePacket(packet);
+        iter->second->handlePacket(incomingPacket);
 
         // TODO: move into Packet or Peer class?
         if (debugMode >= DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
@@ -219,8 +220,7 @@ void NetJUCEClient::doAudioOutput() {
 //    if (connected) audioBuffers.begin()->second->read(audioBlock, AUDIO_BLOCK_SAMPLES);
 //    if (connected) peers.begin()->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
     if (connected) {
-        // Do output if the server is found.
-        // TODO: something about this...
+        // Do output if the server is found...
         auto peer{peers.find(adapterIP)};
         if (peer != peers.end()) {
             peer->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);

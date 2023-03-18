@@ -5,13 +5,14 @@
 #include "CircularBuffer.h"
 
 template<typename T>
-CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, DebugMode debugMode) :
+CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode readMode, DebugMode debugMode) :
         kNumChannels{numChannels},
         kLength{length},
         kFloatLength{static_cast<float>(length)},
-        kRwDeltaThresh(kFloatLength * .15f, kFloatLength * .45f),
+        kRwDeltaThresh(kFloatLength * .2f, kFloatLength * .5), // TODO: check that first is less than second
         buffer{new T *[numChannels]},
-        debugMode{debugMode} {
+        debugMode{debugMode},
+        readMode{readMode} {
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
         buffer[ch] = new T[kLength];
@@ -58,6 +59,9 @@ void CircularBuffer<T>::clear() {
     numSampleReads = 0;
     readPosAllTime = 0.f;
     readPosIncrement.set(1., true);
+    blocksReadSinceLastUpdate = 0;
+    blocksWrittenSinceLastUpdate = 0;
+    driftRatio = 1.f;
 }
 
 template<typename T>
@@ -72,20 +76,130 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
             buffer[ch][writeIndex] = data[ch][n];
         }
     }
+
+    if (readMode == ReadMode::RESAMPLE) {
+        ++numBlockWrites;
+        ++blocksWrittenSinceLastUpdate;
+    }
 //    Serial.printf("write end -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
 }
 
 template<typename T>
 void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
-//    Serial.printf("read start -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
-    for (uint16_t n = 0; n < len; ++n, ++readIndex) {
-        if (readIndex == kLength) {
-            readIndex = 0;
+    if (readMode == ReadMode::RESAMPLE) {
+        setReadPosIncrement();
+        auto initialReadPos{readPos};
+
+        for (int n{0}; n < len; ++n) {
+            if (readPos >= kFloatLength) {
+                readPos -= kFloatLength;
+            }
+
+            auto readPosIntPart{0.f}, alpha{modff(readPos, &readPosIntPart)};
+            auto readPosInt{static_cast<int>(readPosIntPart)};
+            // For each channel, get the next sample, interpolated around readPos.
+            for (int ch{0}; ch < kNumChannels; ++ch) {
+                bufferToFill[ch][n] = interpolateCubic(buffer[ch], readPosInt, alpha);
+            }
+
+            // Try to keep read position a consistent, safe distance behind write
+            // index.
+            auto rwDelta{getReadWriteDelta()};
+
+            if (rwDelta < kRwDeltaThresh.first) {
+                readPosIncrement.set(rwDelta / kRwDeltaThresh.first);
+            } else if (rwDelta > kRwDeltaThresh.second) {
+                readPosIncrement.set(rwDelta / kRwDeltaThresh.second);
+            } else {
+//                readPosIncrement.set(1.f);
+                readPosIncrement.set(driftRatio);
+            }
+
+            auto increment{readPosIncrement.getNext()};
+            readPos += increment;
+
+            // Visualise the state of the read-write delta.
+            if (debugMode == DebugMode::RW_DELTA_VISUALISER && n % 8 == 0 && debugTimer > 5000) {
+                auto r{static_cast<int>(roundf(100.f * (1.f - (rwDelta / kFloatLength))))};
+                auto temp{visualiser[r]};
+                visualiser[r] = '#';
+                Serial.printf("%s %3f (+%.8f)\n", visualiser, rwDelta, increment);
+                visualiser[r] = temp;
+            }
         }
 
-        for (int ch = 0; ch < kNumChannels; ++ch) {
-            bufferToFill[ch][n] = buffer[ch][readIndex];
+        if (0 == numBlockWrites) {
+            readPos = initialReadPos;
+            readPosAllTime = 0.;
+        } else {
+            ++numBlockReads;
+            ++blocksReadSinceLastUpdate;
         }
+    } else {
+        //    Serial.printf("read start -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
+        for (uint16_t n = 0; n < len; ++n, ++readIndex) {
+            if (readIndex == kLength) {
+                readIndex = 0;
+            }
+
+            for (int ch = 0; ch < kNumChannels; ++ch) {
+                bufferToFill[ch][n] = buffer[ch][readIndex];
+            }
+        }
+        //    Serial.printf("read end -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
     }
-//    Serial.printf("read end -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
+}
+
+template<typename T>
+float CircularBuffer<T>::getReadWriteDelta() {
+    auto fWrite{static_cast<float>(writeIndex)};
+    if (readPos > fWrite) {
+        return fWrite + kFloatLength - readPos;
+    } else {
+        return fWrite - readPos;
+    }
+}
+
+template<typename T>
+void CircularBuffer<T>::setReadPosIncrement() {
+    // Update the read increment periodically, based on the ratio of writes
+    // to reads during that period.
+    // If writing more blocks than reading, speed up; if reading more blocks
+    // than writing, slow down.
+    if (blocksReadSinceLastUpdate > 0 && blocksWrittenSinceLastUpdate >= BLOCKS_PER_READ_INCREMENT_UPDATE) {
+//        driftRatio = static_cast<float>(blocksWrittenSinceLastUpdate) / static_cast<float>(blocksReadSinceLastUpdate);
+        // Use all-time writes:reads instead...
+        driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
+
+        debugTimer = 0;
+        Serial.printf("writes %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
+                      numBlockWrites, //blocksWrittenSinceLastUpdate,
+                      numBlockReads, //blocksReadSinceLastUpdate,
+                      driftRatio);
+
+        readPosIncrement.set(driftRatio);
+
+        blocksReadSinceLastUpdate = 0;
+        blocksWrittenSinceLastUpdate = 0;
+    }
+}
+
+template<typename T>
+T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float alpha) {
+    int r{readIdx};
+    auto rm{r - 1}, rp{r + 1}, rpp{r + 2};
+    if (r == 0) {
+        rm = kLength - 1;
+    } else if (r == kLength - 2) {
+        rpp = 0;
+    } else if (r == kLength - 1) {
+        rp = 0;
+        rpp = 1;
+    }
+    auto val = static_cast<float>(channelData[rm]) * (-alpha * (alpha - 1.f) * (alpha - 2.f) / 6.f)
+               + static_cast<float>(channelData[r]) * ((alpha - 1.f) * (alpha + 1.f) * (alpha - 2.f) / 2.f)
+               + static_cast<float>(channelData[rp]) * (-alpha * (alpha + 1.f) * (alpha - 2.f) / 2.f)
+               + static_cast<float>(channelData[rpp]) * (alpha * (alpha + 1.f) * (alpha - 1.f) / 6.f);
+
+    return static_cast<T>(round(val));
 }
