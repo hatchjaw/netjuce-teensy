@@ -25,6 +25,8 @@ public:
 
     const DatagramAudioPacket::Origin &getOrigin() const;
 
+    float getDriftRatio(bool andPrint = false);
+
 private:
     DatagramAudioPacket::Origin origin;
     elapsedMillis receiveTimer;

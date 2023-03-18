@@ -41,6 +41,8 @@ public:
 
 //    void printStats();
 
+    float getDriftRatio(bool andPrint = false);
+
 private:
     enum OperationType {
         UNKNOWN,

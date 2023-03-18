@@ -87,7 +87,7 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
 template<typename T>
 void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
     if (readMode == ReadMode::RESAMPLE) {
-        setReadPosIncrement();
+//        setReadPosIncrement();
         auto initialReadPos{readPos};
 
         for (int n{0}; n < len; ++n) {
@@ -111,8 +111,8 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             } else if (rwDelta > kRwDeltaThresh.second) {
                 readPosIncrement.set(rwDelta / kRwDeltaThresh.second);
             } else {
-//                readPosIncrement.set(1.f);
-                readPosIncrement.set(driftRatio);
+                readPosIncrement.set(1.f);
+//                readPosIncrement.set(driftRatio);
             }
 
             auto increment{readPosIncrement.getNext()};
@@ -169,13 +169,7 @@ void CircularBuffer<T>::setReadPosIncrement() {
     if (blocksReadSinceLastUpdate > 0 && blocksWrittenSinceLastUpdate >= BLOCKS_PER_READ_INCREMENT_UPDATE) {
 //        driftRatio = static_cast<float>(blocksWrittenSinceLastUpdate) / static_cast<float>(blocksReadSinceLastUpdate);
         // Use all-time writes:reads instead...
-        driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
-
-        debugTimer = 0;
-        Serial.printf("writes %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
-                      numBlockWrites, //blocksWrittenSinceLastUpdate,
-                      numBlockReads, //blocksReadSinceLastUpdate,
-                      driftRatio);
+        getDriftRatio(false);
 
         readPosIncrement.set(driftRatio);
 
@@ -202,4 +196,15 @@ T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float al
                + static_cast<float>(channelData[rpp]) * (alpha * (alpha + 1.f) * (alpha - 1.f) / 6.f);
 
     return static_cast<T>(round(val));
+}
+
+template<typename T>
+float CircularBuffer<T>::getDriftRatio(bool andPrint) {
+    if (andPrint) debugTimer = 0;
+    driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
+    Serial.printf("writes %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
+                  numBlockWrites, //blocksWrittenSinceLastUpdate,
+                  numBlockReads, //blocksReadSinceLastUpdate,
+                  driftRatio);
+    return driftRatio;
 }

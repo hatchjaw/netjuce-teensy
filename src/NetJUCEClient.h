@@ -85,7 +85,7 @@ private:
      */
     byte mac[6]{};
     /**
-     * IP address of the server...
+     * IP address of the server.
      */
     IPAddress adapterIP;
     /**
@@ -98,7 +98,7 @@ private:
     IPAddress multicastIP;
     uint16_t remotePort, localPort;
     bool joined{false}, connected{false};
-    elapsedMillis receiveTimer{0}, peerCheckTimer{0};
+    elapsedMillis receiveTimer{0}, peerCheckTimer{0}, driftCheckTimer{0};
     /**
      * Buffer for incoming packets.
      */

@@ -34,3 +34,7 @@ bool NetAudioPeer::isConnected() {
 const DatagramAudioPacket::Origin &NetAudioPeer::getOrigin() const {
     return origin;
 }
+
+float NetAudioPeer::getDriftRatio(bool andPrint) {
+    return audioBuffer->getDriftRatio(andPrint);
+}

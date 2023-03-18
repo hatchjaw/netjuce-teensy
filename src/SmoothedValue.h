@@ -17,11 +17,11 @@ public:
 
     T getNext();
 
-    T &getCurrent();
+    T getCurrent();
 
 private:
-    static constexpr T MULTIPLIER{.05f}, THRESHOLD{1e-9};
-    T current, target;
+    static constexpr double MULTIPLIER{.1}, THRESHOLD{1e-9};
+    double current, target;
 };
 
 template

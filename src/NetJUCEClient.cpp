@@ -50,19 +50,6 @@ bool NetJUCEClient::begin() {
 
     EthernetClass::begin(mac, clientIP);
 
-//    //PLL:
-//    int fs = 44150.f;
-//    // PLL between 27*24 = 648MHz und 54*24=1296MHz
-//    int n1 = 4; //SAI prescaler 4 => (n1*n2) = multiple of 4
-//    int n2 = 1 + (24000000 * 27) / (fs * 256 * n1);
-//
-//    double C = ((double)fs * 256 * n1 * n2) / 24000000;
-//    int c0 = C;
-//    int c2 = 10000;
-//    int c1 = C * c2 - (c0 * c2);
-//    Serial.printf("nfact %d nmult %d ndiv %d\n", c0, c1, c2);
-//    set_audioClock(c0, c1, c2, true);
-
     if (EthernetClass::linkStatus() != LinkON) {
         Serial.println("Ethernet link could not be established.");
         return false;
@@ -109,6 +96,29 @@ void NetJUCEClient::update(void) {
     doAudioOutput();
 
     send();
+
+    // Adjust clock
+    if (driftCheckTimer > 10000 && !peers.empty()) {
+        driftCheckTimer = 0;
+        auto peer{peers.find(adapterIP)};
+        if (peer != peers.end()) {
+            auto drift{peer->second->getDriftRatio(true)};
+
+            //PLL:
+            int fs = static_cast<int>(roundf(AUDIO_SAMPLE_RATE_EXACT * drift));
+            Serial.printf("Setting sample rate: %d", fs);
+            // PLL between 27*24 = 648MHz und 54*24=1296MHz
+            int n1 = 4; //SAI prescaler 4 => (n1*n2) = multiple of 4
+            int n2 = 1 + (24000000 * 27) / (fs * 256 * n1);
+
+            double C = ((double) fs * 256 * n1 * n2) / 24000000;
+            int c0 = C;
+            int c2 = 10000;
+            int c1 = C * c2 - (c0 * c2);
+            Serial.printf(" (nfact %d nmult %d ndiv %d)\n", c0, c1, c2);
+            set_audioClock(c0, c1, c2, true);
+        }
+    }
 }
 
 void NetJUCEClient::receive() {
@@ -183,7 +193,7 @@ void NetJUCEClient::receive() {
 }
 
 void NetJUCEClient::checkConnectivity() {
-    if (peerCheckTimer > 1000) {
+    if (peerCheckTimer > 1000 && !peers.empty()) {
         peerCheckTimer = 0;
         for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
             ++next;
@@ -220,7 +230,7 @@ void NetJUCEClient::doAudioOutput() {
 //    if (connected) audioBuffers.begin()->second->read(audioBlock, AUDIO_BLOCK_SAMPLES);
 //    if (connected) peers.begin()->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
     if (connected) {
-        // Do output if the server is found...
+        // Do output if the server is found. (Could use any available peer...)
         auto peer{peers.find(adapterIP)};
         if (peer != peers.end()) {
             peer->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);

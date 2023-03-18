@@ -25,15 +25,17 @@ T SmoothedValue<T>::getNext() {
         auto absDelta = abs(delta);
         if (absDelta < THRESHOLD) {
             current = target;
+//            Serial.printf("current (%f) = target (%f)\n", current, target);
         } else {
             current += MULTIPLIER * delta;
+//            Serial.printf("target = %.9f, current += %.1f * %.9f = %.9f\n", target, MULTIPLIER, delta, current);
         }
     }
 
-    return current;
+    return static_cast<T>(current);
 }
 
 template<typename T>
-T &SmoothedValue<T>::getCurrent() {
-    return current;
+T SmoothedValue<T>::getCurrent() {
+    return static_cast<T>(current);
 }
