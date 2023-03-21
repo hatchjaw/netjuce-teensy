@@ -9,7 +9,7 @@ CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode
         kNumChannels{numChannels},
         kLength{length},
         kFloatLength{static_cast<float>(length)},
-        kRwDeltaThresh(kFloatLength * .2f, kFloatLength * .5), // TODO: check that first is less than second
+        kRwDeltaThresh(kFloatLength * .225f, kFloatLength * .475f), // TODO: check that first is less than second
         buffer{new T *[numChannels]},
         debugMode{debugMode},
         readMode{readMode} {
@@ -201,6 +201,8 @@ T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float al
 template<typename T>
 float CircularBuffer<T>::getDriftRatio(bool andPrint) {
     if (andPrint) debugTimer = 0;
+    // ...But this assumes that buffer size is the same for server and clients,
+    // which it needn't necessarily be.
     driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
     Serial.printf("writes %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
                   numBlockWrites, //blocksWrittenSinceLastUpdate,

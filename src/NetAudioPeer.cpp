@@ -11,7 +11,7 @@ NetAudioPeer::NetAudioPeer(DatagramAudioPacket &firstPacket) :
                 firstPacket.getNumAudioChannels(),
                 CIRCULAR_BUFFER_SIZE,
                 CB16::ReadMode::RESAMPLE,
-                CB16::DebugMode::RW_DELTA_VISUALISER)
+                CB16::DebugMode::NONE)
         ) {
 }
 

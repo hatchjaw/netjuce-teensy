@@ -2,6 +2,17 @@
 // Created by Tommy Rushton on 22/02/2023.
 //
 
+#include <Audio.h>
+#include <NativeEthernet.h>
+#include <TeensyThreads.h>
+#include <unordered_map>
+#include <memory>
+#include "CircularBuffer.h"
+#include "DatagramAudioPacket.h"
+#include "NetAudioPeer.h"
+#include "Runnable.h"
+//#include <AsyncUDP_Teensy41.h>
+
 #ifndef NETJUCE_NETJUCECLIENT_H
 #define NETJUCE_NETJUCECLIENT_H
 
@@ -24,14 +35,6 @@
 #ifndef DEFAULT_LOCAL_PORT
 #define DEFAULT_LOCAL_PORT 14841
 #endif
-
-#include <Audio.h>
-#include <NativeEthernet.h>
-#include <unordered_map>
-#include <memory>
-#include "CircularBuffer.h"
-#include "DatagramAudioPacket.h"
-#include "NetAudioPeer.h"
 
 enum class DebugMode : uint32_t
 {
@@ -64,7 +67,29 @@ public:
 
     void setDebugMode(DebugMode mode);
 
+    void doSomething();
+
 private:
+    class Receiver : Runnable {
+    public:
+        // Constructor/Destructor
+        Receiver(int interval);
+        ~Receiver();
+
+        // Start thread that will last for duration
+        void startReceiving();
+    protected:
+        // Runnable function that we need to implement
+        void runTarget(void *arg) override;
+    private:
+        // Timing Variables
+        int rxInterval;
+
+        // Thread object
+        std::thread *rxThread{};
+        elapsedMicros timer{0};
+    };
+
     const uint16_t kReceiveTimeoutMs{5000};
 
     void update(void) override;
@@ -77,9 +102,12 @@ private:
 
     void checkConnectivity();
 
+    void adjustClock();
+
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
     EthernetUDP socket;
+//    AsyncUDP udp;
     /**
      * MAC address to assign to Teensy's ethernet shield.
      */
@@ -97,7 +125,7 @@ private:
      */
     IPAddress multicastIP;
     uint16_t remotePort, localPort;
-    bool joined{false}, connected{false};
+    volatile bool joined{false}, connected{false};
     elapsedMillis receiveTimer{0}, peerCheckTimer{0}, driftCheckTimer{0};
     /**
      * Buffer for incoming packets.
@@ -105,9 +133,6 @@ private:
     uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
     uint64_t receivedCount{0};
 
-//    CircularBuffer<int16_t> audioBuffer;
-//    std::map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
-//    std::unordered_map<uint32_t, CircularBuffer<int16_t>*> audioBuffers;
     // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
     // https://en.cppreference.com/w/cpp/container/unordered_map
     std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>> peers;
@@ -116,7 +141,11 @@ private:
     DatagramAudioPacket outgoingPacket, incomingPacket;
 
     DebugMode debugMode;
-};
 
+//    std::thread *receiveThread;
+//    Receiver rx;
+//    Threads::Mutex readLock;
+    elapsedMicros threadTimer{0};
+};
 
 #endif //NETJUCE_NETJUCECLIENT_H

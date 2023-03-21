@@ -1,4 +1,5 @@
 #include <Audio.h>
+#include <AudioStream.h>
 #include <NetJUCEClient.h>
 
 #define BLOCK_WITH_FORCED_SEMICOLON(x) do { x } while (false)
@@ -7,13 +8,14 @@
 IPAddress multicastIP{226, 6, 38, 226};
 IPAddress adapterIP{192, 168, 10, 10};
 uint16_t localPort{DEFAULT_LOCAL_PORT};
-uint16_t remotePort{DEFAULT_LOCAL_PORT}; // Use same port for promiscuous mode
+uint16_t remotePort{DEFAULT_REMOTE_PORT}; // Use same port for promiscuous mode; all clients intercommunicate.
 
+//AudioOutputUSB usb;
 AudioControlSGTL5000 audioShield;
 
 AudioOutputI2S out;
 NetJUCEClient client{adapterIP, multicastIP, remotePort, localPort,
-                     DebugMode::NONE};
+                     DebugMode::HEXDUMP_RECEIVE};
 
 AudioConnection patchCord1(client, 0, out, 0);
 AudioConnection patchCord2(client, 1, out, 1);
