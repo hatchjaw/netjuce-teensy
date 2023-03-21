@@ -6,7 +6,6 @@
 #define NETJUCE_TEENSY_NETAUDIOPEER_H
 
 #include <Audio.h>
-#include <NativeEthernet.h>
 #include "CircularBuffer.h"
 #include "DatagramAudioPacket.h"
 #include <memory>

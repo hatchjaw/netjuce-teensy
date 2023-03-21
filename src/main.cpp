@@ -10,9 +10,7 @@ IPAddress adapterIP{192, 168, 10, 10};
 uint16_t localPort{DEFAULT_LOCAL_PORT};
 uint16_t remotePort{DEFAULT_REMOTE_PORT}; // Use same port for promiscuous mode; all clients intercommunicate.
 
-//AudioOutputUSB usb;
 AudioControlSGTL5000 audioShield;
-
 AudioOutputI2S out;
 NetJUCEClient client{adapterIP, multicastIP, remotePort, localPort,
                      DebugMode::HEXDUMP_RECEIVE};

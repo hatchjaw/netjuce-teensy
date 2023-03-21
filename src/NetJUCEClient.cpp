@@ -3,20 +3,19 @@
 //
 
 #include "NetJUCEClient.h"
-#include <TeensyID.h>
-#include <imxrt_hw.h>
+#include <AsyncUDP_Teensy41.h>
 
-ThreadWrap(Serial, SerialXtra);
-#define Serial ThreadClone(SerialXtra)
+//ThreadWrap(Serial, SerialXtra);
+//#define Serial ThreadClone(SerialXtra)
 
-void clientReceiveCallback(void *c) {
-    auto client{static_cast<NetJUCEClient *>(c)};
-    while (1) {
-        client->doSomething();
-//        threads.delay_us(100);
-        Threads::yield();
-    }
-}
+//void clientReceiveCallback(void *c) {
+//    auto client{static_cast<NetJUCEClient *>(c)};
+//    while (1) {
+//        client->doSomething();
+////        threads.delay_us(100);
+//        Threads::yield();
+//    }
+//}
 
 NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
                              IPAddress &multicastIPAddress,
@@ -26,6 +25,7 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
         AudioStream{NUM_SOURCES, new audio_block_t *[NUM_SOURCES]},
         adapterIP{networkAdapterIPAddress},
         clientIP{networkAdapterIPAddress},
+        gatewayIP{networkAdapterIPAddress},
         multicastIP{multicastIPAddress},
         remotePort{remotePortNumber},
         localPort{localPortNumber},
@@ -34,17 +34,11 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
         incomingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
         debugMode(debugModeToUse) {
 
-    teensyMAC(mac);
-
-    // TODO: check whether resulting clientIP is the same as the server.
-    // TODO: also check for collisions between clients... adjust as necessary?...
-    clientIP[3] = mac[5];
-
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
     }
 
-    threads.setSliceMicros(100);
+//    threads.setSliceMicros(100);
 }
 
 NetJUCEClient::~NetJUCEClient() {
@@ -60,19 +54,62 @@ bool NetJUCEClient::begin() {
 
     Serial.printf("DEBUG MODE: %d\n", debugMode);
 
+    Serial.print("\nStart AsyncUDPMulticastServer on ");
+    Serial.println(BOARD_NAME);
+    Serial.println(ASYNC_UDP_TEENSY41_VERSION);
+
+    Ethernet.macAddress(mac);
     Serial.printf(F("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n"),
                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-    EthernetClass::begin(mac, clientIP);
+    // TODO: check whether resulting clientIP is the same as the server.
+    // TODO: also check for collisions between clients... adjust as necessary?...
+    clientIP[3] = mac[5];
 
-    if (EthernetClass::linkStatus() != LinkON) {
-        Serial.println("Ethernet link could not be established.");
+    gatewayIP[3] = 1;
+
+    Serial.print("Initialize Ethernet using static IP => ");
+    Ethernet.begin(clientIP, netmask, gatewayIP);
+    Ethernet.setDNSServerIP(dnsServer);
+
+    if (!Ethernet.waitForLocalIP(5000)) {
+        Serial.println(F("Failed to configure Ethernet"));
+
+        if (!Ethernet.linkStatus()) {
+            Serial.println(F("Ethernet cable is not connected."));
+        }
+
         return false;
-    } else {
-        Serial.print(F("IP: "));
-        Serial.println(EthernetClass::localIP());
-        return true;
     }
+
+    Serial.print(F("Connected! IP address: "));
+    Serial.println(Ethernet.localIP());
+
+    return true;
+
+//    delay(2000);
+
+//    if (udp.listenMulticast(multicastIP, remotePort))
+//    {
+//        Serial.print("UDP Listening on IP: ");
+//        Serial.println(Ethernet.localIP());
+//
+//        udp.onPacket([this](const AsyncUDPPacket& packet)
+//                     {
+//                         handleIncomingPacket(packet);
+//                     });
+//    }
+
+//    EthernetClass::begin(mac, clientIP);
+//
+//    if (EthernetClass::linkStatus() != LinkON) {
+//        Serial.println("Ethernet link could not be established.");
+//        return false;
+//    } else {
+//        Serial.print(F("IP: "));
+//        Serial.println(EthernetClass::localIP());
+//        return true;
+//    }
 }
 
 bool NetJUCEClient::isConnected() const {
@@ -88,37 +125,47 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 
     Serial.print(F("Joining multicast group at "));
     Serial.print(multicastIP);
-    Serial.printf(F(", listening on port %d... "), localPort);
+    Serial.println(F("... "));
 
-    joined = socket.beginMulticast(multicastIP, localPort);
+//    joined = sender.beginMulticast(multicastIP, localPort + 1);
+//    if (joined) Serial.println("Began multicast");
+//    sender.begin(localPort + 1);
+    joined = udp.listenMulticast(multicastIP, localPort);
 
     if (joined) {
-        Serial.println(F("Success!"));
+        Serial.print("Success! UDP Listening on IP: ");
+        Serial.print(Ethernet.localIP());
+        Serial.printf(" port %d\n", localPort);
+
+        udp.onPacket([this](AsyncUDPPacket packet) {
+            handleIncomingPacket(packet);
+//            Serial.print("UDP Packet Type: ");
+//            Serial.print(packet.isBroadcast() ? "Broadcast" : packet.isMulticast() ? "Multicast" : "Unicast");
+//            Serial.print(", From: ");
+//            Serial.print(packet.remoteIP());
+//            Serial.print(":");
+//            Serial.print(packet.remotePort());
+//            Serial.print(", To: ");
+//            Serial.print(packet.localIP());
+//            Serial.print(":");
+//            Serial.print(packet.localPort());
+//            Serial.print(", Length: ");
+//            Serial.print(packet.length());
+//            Serial.print(", Data: ");
+//            Serial.write(packet.data(), packet.length());
+//            Serial.println();
+        });
+
         receiveTimer = 0;
         receivedCount = 0;
         outgoingPacket.reset();
-
-//        auto threadID{threads.addThread(clientReceiveCallback, this)};
-//    threads.setMicroTimer(100);
-//    threads.setTimeSlice(threadID, 1);
-//        receiveThread = new std::thread(&rx);
-//        receiveThread->detach();
-
-//        threads.setSliceMicros(100);
-//        rx.startReceiving();
-
-//        threads.setSliceMicros(10);
-//        auto tid{threads.addThread(clientReceiveCallback, this)};
-//        threads.setTimeSlice(tid, 10);
     } else {
-        Serial.println(F("Failed."));
+        Serial.println(F("Failed to join multicast group."));
         delay(connectTimeoutMs);
     }
 }
 
 void NetJUCEClient::update(void) {
-    receive();
-
     checkConnectivity();
 
     doAudioOutput();
@@ -126,8 +173,6 @@ void NetJUCEClient::update(void) {
     send();
 
     adjustClock();
-
-    //    threads.delay_us(100);
 }
 
 void NetJUCEClient::adjustClock() {
@@ -165,59 +210,59 @@ void NetJUCEClient::receive() {
 
     if (!joined) return;
 
-    int packetSize;
-
-    while ((packetSize = socket.parsePacket()) > 0) {
-        ++receivedCount;
-        connected = true;
-        receiveTimer = 0;
-
-        socket.read(packetBuffer, packetSize);
-
-        auto remoteIP{socket.remoteIP()};
-        auto port{socket.remotePort()};
-        auto rawIP{static_cast<uint32_t>(remoteIP)};
-
-        auto headerIn{reinterpret_cast<DatagramAudioPacket::PacketHeader *>(packetBuffer)};
-        auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
-
-        // There's about to be at least one peer so confirm connectedness.
-        if (peers.empty()) {
-            driftCheckTimer = 0;
-            connected = true;
-        }
-
-        incomingPacket.fromRawPacketData(remoteIP, port, packetBuffer);
-        auto iter{peers.find(rawIP)};
-        // If an unknown peer...
-        if (iter == peers.end()) {
-            // ...insert it.
-            iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(incomingPacket))).first;
-            auto o{iter->second->getOrigin()};
-            Serial.print("\nPeer ");
-            Serial.print(o.IP);
-            Serial.printf(":%" PRIu16, o.Port);
-            Serial.print(" connected.\n\n");
-        }
-        iter->second->handlePacket(incomingPacket);
-
-        // TODO: move into Packet or Peer class?
-        if (debugMode >= DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
-            Serial.println("Connected peers:");
-            for (auto &peer: peers) {
-                Serial.println(IPAddress{peer.first});
-            }
-            Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
-                          headerIn->SeqNumber,
-                          headerIn->BufferSize,
-                          headerIn->NumChannels);
-            Serial.print("From: ");
-            Serial.print(socket.remoteIP());
-            Serial.printf(":%d\n", socket.remotePort());
-            Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
-            hexDump(packetBuffer, packetSize, true);
-        }
-    }
+//    int packetSize;
+//
+//    while ((packetSize = socket.parsePacket()) > 0) {
+//        ++receivedCount;
+//        connected = true;
+//        receiveTimer = 0;
+//
+//        socket.read(packetBuffer, packetSize);
+//
+//        auto remoteIP{socket.remoteIP()};
+//        auto port{socket.remotePort()};
+//        auto rawIP{static_cast<uint32_t>(remoteIP)};
+//
+//        auto headerIn{reinterpret_cast<DatagramAudioPacket::PacketHeader *>(packetBuffer)};
+//        auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
+//
+//        // There's about to be at least one peer so confirm connectedness.
+//        if (peers.empty( {
+//            driftCheckTimer = 0;
+//            connected = true;
+//        }
+//
+//        incomingPacket.fromRawPacketData(remoteIP, port, packetBuffer);
+//        auto iter{peers.find(rawIP)};
+//        // If an unknown peer...
+//        if (iter == peers.end()) {
+//            // ...insert it.
+//            iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(incomingPacket))).first;
+//            auto o{iter->second->getOrigin()};
+//            Serial.print("\nPeer ");
+//            Serial.print(o.IP);
+//            Serial.printf(":%" PRIu16, o.Port);
+//            Serial.print(" connected.\n\n");
+//        }
+//        iter->second->handlePacket(incomingPacket);
+//
+//        // TODO: move into Packet or Peer class?
+//        if (debugMode >= DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
+//            Serial.println("Connected peers:");
+//            for (auto &peer: peers) {
+//                Serial.println(IPAddress{peer.first});
+//            }
+//            Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
+//                          headerIn->SeqNumber,
+//                          headerIn->BufferSize,
+//                          headerIn->NumChannels);
+//            Serial.print("From: ");
+//            Serial.print(socket.remoteIP());
+//            Serial.printf(":%d\n", socket.remotePort());
+//            Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
+//            hexDump(packetBuffer, packetSize, true);
+//        }
+//    }
 }
 
 void NetJUCEClient::checkConnectivity() {
@@ -241,7 +286,7 @@ void NetJUCEClient::checkConnectivity() {
 
     if (receiveTimer > kReceiveTimeoutMs) {
         Serial.printf(F("Nothing received for %d ms. Stopping.\n"), kReceiveTimeoutMs);
-        socket.stop();
+//        udp.close(); // Called by listenMulticast(), so probably no need here
         peers.clear();
         receiveTimer = 0;
         // TODO: fix this ambiguous situation
@@ -313,9 +358,18 @@ void NetJUCEClient::send() {
 
     // TODO: check for failures and such.
     outgoingPacket.writeHeader();
-    socket.beginPacket(multicastIP, remotePort);
-    socket.write(outgoingPacket.getData(), outgoingPacket.getSize());
-    socket.endPacket();
+
+//    if (outgoingPacket.getSeqNumber() > 0 && outgoingPacket.getSeqNumber() % 10000 == 0) {
+//        sender.beginPacket(multicastIP, remotePort);
+//        sender.write(outgoingPacket.getData(), outgoingPacket.getSize());
+//        sender.endPacket();
+
+//    Serial.println("About to call writeTo()");
+//    udp.writeTo(outgoingPacket.getData(), outgoingPacket.getSize(), multicastIP, remotePort);
+
+//        uint8_t buf[]{"Anyone here?"};
+//        udp.writeTo(buf, 13, IPAddress(226, 6, 38, 226), 41814);
+//    }
 
     if (debugMode >= DebugMode::HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
         Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
@@ -353,35 +407,91 @@ void NetJUCEClient::doSomething() {
 //    receive();
 }
 
+void NetJUCEClient::handleIncomingPacket(AsyncUDPPacket &packet) {
+    if (packet.length() > 0) {
+        ++receivedCount;
+        connected = true;
+        receiveTimer = 0;
+
+        auto remoteIP{packet.remoteIP()};
+        auto rawIP{static_cast<uint32_t>(remoteIP)};
+
+        auto headerIn{reinterpret_cast<DatagramAudioPacket::PacketHeader *>(packet.data())};
+        auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
+
+        // There's about to be at least one peer so confirm connectedness.
+        if (peers.empty()) {
+            driftCheckTimer = 0;
+            connected = true;
+        }
+
+        incomingPacket.fromRawPacketData(remoteIP, packet.remotePort(), packet.data());
+        auto iter{peers.find(rawIP)};
+        // If an unknown peer...
+        if (iter == peers.end()) {
+            // ...insert it.
+            iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(incomingPacket))).first;
+            auto o{iter->second->getOrigin()};
+            Serial.print("\nPeer ");
+            Serial.print(o.IP);
+            Serial.printf(":%" PRIu16, o.Port);
+            Serial.print(" connected.\n\n");
+        }
+        iter->second->handlePacket(incomingPacket);
+
+        // TODO: move into Packet or Peer class?
+        if (debugMode >= DebugMode::HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
+            Serial.println("Connected peers:");
+            for (auto &peer: peers) {
+                Serial.println(IPAddress{peer.first});
+            }
+            Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
+                          headerIn->SeqNumber,
+                          headerIn->BufferSize,
+                          headerIn->NumChannels);
+            Serial.print("From: ");
+            Serial.print(remoteIP);
+            Serial.printf(":%d\n", packet.remotePort());
+            Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
+            hexDump(packet.data(), static_cast<int>(packet.length()), true);
+        }
+
+        // This works... why doesn't sending on the audio interrupt?
+//        uint8_t buf[50]{};
+//        sprintf(reinterpret_cast<char *>(buf), "Got %u bytes of data", packet.length());
+//        udp.writeTo(buf, 50, IPAddress(226, 6, 38, 226), 41814);
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // RECEIVER
-NetJUCEClient::Receiver::Receiver(int interval) : rxInterval(interval) {
-    Serial.printf("Constructing Receiver. interval = %d\n", rxInterval);
-}
-
-NetJUCEClient::Receiver::~Receiver() {
-    Serial.println("Destructing Receiver.");
-}
-
-void NetJUCEClient::Receiver::startReceiving() {
-    if (rxThread == nullptr) {
-//        threads.setSliceMicros(10);
-        rxThread = new std::thread(Runnable::runThread, this);
-//        threads.setTimeSlice(rxThread->get_id(), 10);
-        rxThread->detach();
-    }
-}
-
-void NetJUCEClient::Receiver::runTarget(void *arg) {
-    auto *receiver = static_cast<Receiver *>(arg);
-    auto id{rxThread->get_id()};
-
-    while (1) {
-        Serial.printf("Thread ID: %d. State: %d. Stack used: %d. ", id, threads.getState(id), threads.getStackUsed(id));
-        Serial.print("Running... (");
-        Serial.print(timer);
-        Serial.println(" us)");
-        timer = 0;
-        Threads::yield();
-    }
-}
+//NetJUCEClient::Receiver::Receiver(int interval) : rxInterval(interval) {
+//    Serial.printf("Constructing Receiver. interval = %d\n", rxInterval);
+//}
+//
+//NetJUCEClient::Receiver::~Receiver() {
+//    Serial.println("Destructing Receiver.");
+//}
+//
+//void NetJUCEClient::Receiver::startReceiving() {
+//    if (rxThread == nullptr) {
+////        threads.setSliceMicros(10);
+//        rxThread = new std::thread(Runnable::runThread, this);
+////        threads.setTimeSlice(rxThread->get_id(), 10);
+//        rxThread->detach();
+//    }
+//}
+//
+//void NetJUCEClient::Receiver::runTarget(void *arg) {
+//    auto *receiver = static_cast<Receiver *>(arg);
+//    auto id{rxThread->get_id()};
+//
+//    while (1) {
+//        Serial.printf("Thread ID: %d. State: %d. Stack used: %d. ", id, threads.getState(id), threads.getStackUsed(id));
+//        Serial.print("Running... (");
+//        Serial.print(timer);
+//        Serial.println(" us)");
+//        timer = 0;
+//        Threads::yield();
+//    }
+//}
