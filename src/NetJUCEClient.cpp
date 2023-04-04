@@ -309,9 +309,11 @@ void NetJUCEClient::send() {
         if (inBlock[channel]) {
             outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
             release(inBlock[channel]);
-        } else {
-            outgoingPacket.writeAudioData(channel, );
         }
+//        else {
+//            // Send zeros
+//            outgoingPacket.writeAudioData(channel, );
+//        }
     }
 
     // TODO: check for failures and such.
