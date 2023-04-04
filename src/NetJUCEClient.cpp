@@ -38,6 +38,7 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
 
     // TODO: check whether resulting clientIP is the same as the server.
     // TODO: also check for collisions between clients... adjust as necessary?...
+    clientIP[2] = mac[4];
     clientIP[3] = mac[5];
 
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
@@ -308,6 +309,8 @@ void NetJUCEClient::send() {
         if (inBlock[channel]) {
             outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
             release(inBlock[channel]);
+        } else {
+            outgoingPacket.writeAudioData(channel, );
         }
     }
 

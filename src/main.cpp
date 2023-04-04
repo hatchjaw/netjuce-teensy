@@ -15,7 +15,7 @@ AudioControlSGTL5000 audioShield;
 
 AudioOutputI2S out;
 NetJUCEClient client{adapterIP, multicastIP, remotePort, localPort,
-                     DebugMode::HEXDUMP_RECEIVE};
+                     DebugMode::NONE};
 
 AudioConnection patchCord1(client, 0, out, 0);
 AudioConnection patchCord2(client, 1, out, 1);
