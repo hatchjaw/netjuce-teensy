@@ -4,14 +4,12 @@
 
 #include <Audio.h>
 #include <NativeEthernet.h>
-#include <TeensyThreads.h>
 #include <unordered_map>
 #include <memory>
 #include "CircularBuffer.h"
 #include "DatagramAudioPacket.h"
 #include "NetAudioPeer.h"
-#include "Runnable.h"
-//#include <AsyncUDP_Teensy41.h>
+#include "ProgramContext.h"
 
 #ifndef NETJUCE_NETJUCECLIENT_H
 #define NETJUCE_NETJUCECLIENT_H
@@ -51,6 +49,8 @@ constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum D
 
 class NetJUCEClient : public AudioStream {
 public:
+    explicit NetJUCEClient(ProgramContext &);
+
     NetJUCEClient(IPAddress &networkAdapterIPAddress,
                   IPAddress &multicastIPAddress,
                   uint16_t remotePortNumber = DEFAULT_REMOTE_PORT,
@@ -67,29 +67,7 @@ public:
 
     void setDebugMode(DebugMode mode);
 
-    void doSomething();
-
 private:
-    class Receiver : Runnable {
-    public:
-        // Constructor/Destructor
-        Receiver(int interval);
-        ~Receiver();
-
-        // Start thread that will last for duration
-        void startReceiving();
-    protected:
-        // Runnable function that we need to implement
-        void runTarget(void *arg) override;
-    private:
-        // Timing Variables
-        int rxInterval;
-
-        // Thread object
-        std::thread *rxThread{};
-        elapsedMicros timer{0};
-    };
-
     const uint16_t kReceiveTimeoutMs{5000};
 
     void update(void) override;
@@ -107,7 +85,6 @@ private:
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
     EthernetUDP socket;
-//    AsyncUDP udp;
     /**
      * MAC address to assign to Teensy's ethernet shield.
      */
@@ -136,16 +113,13 @@ private:
     // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
     // https://en.cppreference.com/w/cpp/container/unordered_map
     std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>> peers;
+    std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>>::iterator server;
+//    std::iterator<uint32_t, std::unique_ptr<NetAudioPeer>> server;
     int16_t **audioBlock;
 
     DatagramAudioPacket outgoingPacket, incomingPacket;
 
     DebugMode debugMode;
-
-//    std::thread *receiveThread;
-//    Receiver rx;
-//    Threads::Mutex readLock;
-    elapsedMicros threadTimer{0};
 };
 
 #endif //NETJUCE_NETJUCECLIENT_H

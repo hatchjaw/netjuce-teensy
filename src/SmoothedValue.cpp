@@ -5,10 +5,11 @@
 #include "SmoothedValue.h"
 
 template<typename T>
-SmoothedValue<T>::SmoothedValue(T initialValue) {
-    target = initialValue;
-    current = target;
-}
+SmoothedValue<T>::SmoothedValue(T initialValue, double multiplier, double threshold) :
+        current(initialValue),
+        target(initialValue),
+        deltaMultiplier(multiplier),
+        deltaThreshold(threshold) {}
 
 template<typename T>
 void SmoothedValue<T>::set(T targetValue, bool skipSmoothing) {
@@ -23,12 +24,16 @@ T SmoothedValue<T>::getNext() {
     if (current != target) {
         auto delta = target - current;
         auto absDelta = abs(delta);
-        if (absDelta < THRESHOLD) {
+        if (absDelta < deltaThreshold) {
             current = target;
 //            Serial.printf("current (%f) = target (%f)\n", current, target);
         } else {
-            current += MULTIPLIER * delta;
-//            Serial.printf("target = %.9f, current += %.1f * %.9f = %.9f\n", target, MULTIPLIER, delta, current);
+            current += deltaMultiplier * delta;
+//            Serial.printf("target = %.9f, current += %.1f * %.9f = %.9f\n", target, deltaMultiplier, delta, current);
+        }
+
+        if (onChange != nullptr) {
+            onChange(current);
         }
     }
 

@@ -6,15 +6,19 @@
 #include <TeensyID.h>
 #include <imxrt_hw.h>
 
-ThreadWrap(Serial, SerialXtra);
-#define Serial ThreadClone(SerialXtra)
+NetJUCEClient::NetJUCEClient(ProgramContext &context) :
+        AudioStream(NUM_SOURCES, new audio_block_t *[NUM_SOURCES]),
+        adapterIP(context.serverIP),
+        multicastIP(context.multicastIP),
+        remotePort(context.remotePort),
+        localPort(context.localPort),
+        audioBlock{new int16_t *[NUM_SOURCES]},
+        outgoingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
+        incomingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
+        debugMode(DebugMode::NONE) {
 
-void clientReceiveCallback(void *c) {
-    auto client{static_cast<NetJUCEClient *>(c)};
-    while (1) {
-        client->doSomething();
-//        threads.delay_us(100);
-        Threads::yield();
+    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
+        audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
     }
 }
 
@@ -44,8 +48,6 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
     }
-
-    threads.setSliceMicros(100);
 }
 
 NetJUCEClient::~NetJUCEClient() {
@@ -57,8 +59,6 @@ NetJUCEClient::~NetJUCEClient() {
 
 
 bool NetJUCEClient::begin() {
-//    Serial.printf("Receive thread ID: %d\n", receiveThread.get_id());
-
     Serial.printf("DEBUG MODE: %d\n", debugMode);
 
     Serial.printf(F("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n"),
@@ -98,19 +98,6 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
         receiveTimer = 0;
         receivedCount = 0;
         outgoingPacket.reset();
-
-//        auto threadID{threads.addThread(clientReceiveCallback, this)};
-//    threads.setMicroTimer(100);
-//    threads.setTimeSlice(threadID, 1);
-//        receiveThread = new std::thread(&rx);
-//        receiveThread->detach();
-
-//        threads.setSliceMicros(100);
-//        rx.startReceiving();
-
-//        threads.setSliceMicros(10);
-//        auto tid{threads.addThread(clientReceiveCallback, this)};
-//        threads.setTimeSlice(tid, 10);
     } else {
         Serial.println(F("Failed."));
         delay(connectTimeoutMs);
@@ -127,22 +114,18 @@ void NetJUCEClient::update(void) {
     send();
 
     adjustClock();
-
-    //    threads.delay_us(100);
 }
 
 void NetJUCEClient::adjustClock() {
     if (driftCheckTimer > 10000 && !peers.empty()) {
         driftCheckTimer = 0;
+        // Try to find the server.
         auto peer{peers.find(adapterIP)};
         if (peer != peers.end()) {
-            auto drift{1.f};
-            {
-//                Threads::Scope m(readLock);
-                drift = peer->second->getDriftRatio(true);
-            }
+            auto drift = peer->second->getDriftRatio(true);
 
-            // PLL:
+            // PLL4:
+            // TODO: use drift to set c0 directly instead.
             auto fs = AUDIO_SAMPLE_RATE_EXACT * drift;
             Serial.printf("Setting sample rate: %.7f", fs);
             // PLL between 27*24 = 648MHz und 54*24=1296MHz
@@ -162,8 +145,6 @@ void NetJUCEClient::adjustClock() {
 }
 
 void NetJUCEClient::receive() {
-//    Threads::Scope m(readLock);
-
     if (!joined) return;
 
     int packetSize;
@@ -222,8 +203,6 @@ void NetJUCEClient::receive() {
 }
 
 void NetJUCEClient::checkConnectivity() {
-//    Threads::Scope m(readLock);
-
     if (peerCheckTimer > 1000 && !peers.empty()) {
         peerCheckTimer = 0;
         for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
@@ -245,7 +224,7 @@ void NetJUCEClient::checkConnectivity() {
         socket.stop();
         peers.clear();
         receiveTimer = 0;
-        // TODO: fix this ambiguous situation
+        // TODO: address this ambiguity
         joined = false;
         connected = false;
     }
@@ -253,26 +232,26 @@ void NetJUCEClient::checkConnectivity() {
 
 void NetJUCEClient::doAudioOutput() {
     if (connected) {
-        // Try to use the stream from the server for audio output.
-        auto peer{peers.find(adapterIP)};
-        if (peer != peers.end()) {
-//            Threads::Scope m(readLock);
+        // Try to cache the map iterator for the server.
+        if (server == peers.end()) {
+            server = peers.find(adapterIP);
+        }
 
-            peer->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
-        } else {
-            // Otherwise just use the first available peer.
+        if (server == peers.end()) {
+            // Just use the first available peer.
 //            peers.begin()->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
 //            memset(audioBlock[0], 0, NUM_SOURCES * AUDIO_BLOCK_SAMPLES * sizeof(int16_t));
+            // (actually go with silence.)
             for (int ch = 0; ch < NUM_SOURCES; ++ch) {
                 memset(audioBlock[ch], 0, AUDIO_BLOCK_SAMPLES * sizeof(int16_t));
             }
+        } else {
+            server->second->getNextAudioBlock(audioBlock, AUDIO_BLOCK_SAMPLES);
         }
     } else {
 //        memset(audioBlock[0], 0, NUM_SOURCES * AUDIO_BLOCK_SAMPLES * sizeof(int16_t));
         for (int ch = 0; ch < NUM_SOURCES; ++ch) {
-            for (int s = 0; s < AUDIO_BLOCK_SAMPLES; ++s) {
-                audioBlock[ch][s] = 0;
-            }
+            memset(audioBlock[ch], 0, AUDIO_BLOCK_SAMPLES * sizeof(int16_t));
         }
     }
 
@@ -309,11 +288,10 @@ void NetJUCEClient::send() {
         if (inBlock[channel]) {
             outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
             release(inBlock[channel]);
+        } else {
+            // Send zeros.
+            outgoingPacket.clearAudioData(channel);
         }
-//        else {
-//            // Send zeros
-//            outgoingPacket.writeAudioData(channel, );
-//        }
     }
 
     // TODO: check for failures and such.
@@ -324,6 +302,9 @@ void NetJUCEClient::send() {
 
     if (debugMode >= DebugMode::HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
         Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
+        Serial.print("Destination: ");
+        Serial.print(multicastIP);
+        Serial.printf(":%d\n", remotePort);
         hexDump(outgoingPacket.getData(), static_cast<int>(outgoingPacket.getSize()), true);
     }
 
@@ -348,45 +329,4 @@ void NetJUCEClient::hexDump(const uint8_t *buffer, int length, bool doHeader) co
         Serial.printf(F("%02x "), *p);
     }
     Serial.println(F("\n"));
-}
-
-void NetJUCEClient::doSomething() {
-//    Serial.print("doing something... (");
-//    Serial.print(threadTimer);
-//    Serial.println(" us)");
-    threadTimer = 0;
-//    receive();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// RECEIVER
-NetJUCEClient::Receiver::Receiver(int interval) : rxInterval(interval) {
-    Serial.printf("Constructing Receiver. interval = %d\n", rxInterval);
-}
-
-NetJUCEClient::Receiver::~Receiver() {
-    Serial.println("Destructing Receiver.");
-}
-
-void NetJUCEClient::Receiver::startReceiving() {
-    if (rxThread == nullptr) {
-//        threads.setSliceMicros(10);
-        rxThread = new std::thread(Runnable::runThread, this);
-//        threads.setTimeSlice(rxThread->get_id(), 10);
-        rxThread->detach();
-    }
-}
-
-void NetJUCEClient::Receiver::runTarget(void *arg) {
-    auto *receiver = static_cast<Receiver *>(arg);
-    auto id{rxThread->get_id()};
-
-    while (1) {
-        Serial.printf("Thread ID: %d. State: %d. Stack used: %d. ", id, threads.getState(id), threads.getStackUsed(id));
-        Serial.print("Running... (");
-        Serial.print(timer);
-        Serial.println(" us)");
-        timer = 0;
-        Threads::yield();
-    }
 }

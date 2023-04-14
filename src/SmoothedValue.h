@@ -7,11 +7,12 @@
 
 
 #include <Arduino.h>
+#include <functional>
 
 template<typename T>
 class SmoothedValue {
 public:
-    explicit SmoothedValue(T initialValue);
+    explicit SmoothedValue(T initialValue, double multiplier = .1, double threshold = 1e-9);
 
     void set(T targetValue, bool skipSmoothing = false);
 
@@ -19,9 +20,10 @@ public:
 
     T getCurrent();
 
+    std::function<void(T currentValue)> onChange;
+
 private:
-    static constexpr double MULTIPLIER{.1}, THRESHOLD{1e-9};
-    double current, target;
+    double current, target, deltaMultiplier, deltaThreshold;
 };
 
 template

@@ -1,9 +1,7 @@
 #include <Audio.h>
 #include <AudioStream.h>
 #include <NetJUCEClient.h>
-
-#define BLOCK_WITH_FORCED_SEMICOLON(x) do { x } while (false)
-#define WAIT_INFINITE() BLOCK_WITH_FORCED_SEMICOLON(while (true) yield();)
+#include <Utils.h>
 
 IPAddress multicastIP{226, 6, 38, 226};
 IPAddress adapterIP{192, 168, 10, 10};

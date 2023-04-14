@@ -66,15 +66,14 @@ public:
 
     ~DatagramAudioPacket();
 
-    // Copy constructor.
+    // Make non-copyable...
     DatagramAudioPacket(const DatagramAudioPacket &p) = delete;
-
 //    :
 //            data(new uint8_t(*p.data)),
 //            size(p.size),
 //            bytesPerChannel(p.bytesPerChannel) {}
 
-    // Assignment operator.
+    // ... and non-assignable.
     DatagramAudioPacket &operator=(const DatagramAudioPacket &p) = delete;
 //    {
 //        if (this != &p) {
@@ -93,6 +92,13 @@ public:
     void writeAudioData(int channel, void *channelData);
 
     /**
+     * Write zeros to an audio channel.
+     *
+     * @param channel
+     */
+    void clearAudioData(int channel);
+
+    /**
      * Write the header to the packet
      */
     void writeHeader();
@@ -100,10 +106,10 @@ public:
     /**
      * Get a pointer to the audio data portion of the packet.
      */
-    uint8_t *getRawAudioData();
+    uint8_t *getRawAudioData(int channel = 0);
 
     /**
-     * Read audio data into a buffer.
+     * Read audio data from the packet into the buffer supplied.
      * @param buffer
      */
     void getAudioData(const int16_t **buffer);
@@ -129,7 +135,7 @@ public:
     DatagramAudioPacket::Origin getOrigin();
 
     /**
-     * Reset the packet. Set sequence number to zero (etc.)
+     * Reset the packet. Set sequence number to zero, set audio samples to zero.
      */
     void reset();
 

@@ -4,14 +4,6 @@
 
 #include "DatagramAudioPacket.h"
 
-//DatagramAudioPacket::DatagramAudioPacket(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData) :
-//        origin{peerIP, peerPort},
-//        data{packetData} {
-//    parseHeader();
-//    bytesPerChannel = header.BufferSize * sizeof(int16_t);
-//    size = PACKET_HEADER_SIZE + header.NumChannels * bytesPerChannel;
-//}
-
 DatagramAudioPacket::DatagramAudioPacket(int numChannels, int bufferSize, float sampleRate) {
     bytesPerChannel = bufferSize * sizeof(int16_t); // TODO: generalise this.
     size = PACKET_HEADER_SIZE + numChannels * bytesPerChannel;
@@ -74,8 +66,8 @@ void DatagramAudioPacket::writeHeader() {
     memcpy(data, &header, PACKET_HEADER_SIZE);
 }
 
-uint8_t *DatagramAudioPacket::getRawAudioData() {
-    return data + PACKET_HEADER_SIZE;
+uint8_t *DatagramAudioPacket::getRawAudioData(int channel) {
+    return data + PACKET_HEADER_SIZE + channel * bytesPerChannel;
 }
 
 uint8_t *DatagramAudioPacket::getData() {
@@ -90,8 +82,13 @@ void DatagramAudioPacket::writeAudioData(int channel, void *channelData) {
     memcpy(data + PACKET_HEADER_SIZE + channel * bytesPerChannel, channelData, bytesPerChannel);
 }
 
+void DatagramAudioPacket::clearAudioData(int channel) {
+    memset(getRawAudioData(channel), 0, bytesPerChannel);
+}
+
 void DatagramAudioPacket::reset() {
     header.SeqNumber = 0;
+    memset(data + PACKET_HEADER_SIZE, 0, size - PACKET_HEADER_SIZE);
 }
 
 void DatagramAudioPacket::parseHeader() {
