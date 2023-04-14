@@ -1,13 +1,11 @@
 #include <Audio.h>
 #include <NetJUCEClient.h>
+#include <Utils.h>
 #include "SyncTester/SyncTester.h"
 
 // Wait for a serial connection before proceeding with execution
 #define WAIT_FOR_SERIAL
 //#undef WAIT_FOR_SERIAL
-
-// Shorthand to block and do nothing
-#define WAIT_INFINITE() while (true) yield();
 
 // Local udp port on which to receive packets.
 const uint16_t kLocalUdpPort = 8888;
@@ -58,7 +56,7 @@ void setup() {
 
     if (!client.begin()) {
         Serial.println("Failed to initialise client.");
-        WAIT_INFINITE()
+        WAIT_INFINITE();
     }
 
     client.setDebugMode(DebugMode::HEXDUMP_SEND);
