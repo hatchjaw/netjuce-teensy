@@ -44,6 +44,8 @@ void loop() {
     if (!client.isConnected()) {
         client.connect(2500);
     } else {
+        client.loop();
+
         if (usageReportTimer > USAGE_REPORT_INTERVAL) {
             Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
                           AudioMemoryUsage(),

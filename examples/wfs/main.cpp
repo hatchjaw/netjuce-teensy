@@ -14,6 +14,7 @@
 #define WAIT_FOR_SERIAL
 
 IPAddress multicastIP{226, 6, 38, 226};
+IPAddress oscMulticastIP{226, 6, 38, 227};
 IPAddress adapterIP{192, 168, 10, 10};
 
 ProgramContext context;
@@ -32,6 +33,7 @@ void setup() {
     }
 
     context.multicastIP = multicastIP;
+    context.oscMulticastIP = oscMulticastIP;
     context.serverIP = adapterIP;
     context.remotePort = DEFAULT_REMOTE_PORT;
     context.localPort = DEFAULT_LOCAL_PORT;
@@ -47,7 +49,6 @@ void setup() {
 
     for (auto &c: components) {
         if (!c->begin()) {
-            c->printError();
             WAIT_INFINITE();
         }
     }

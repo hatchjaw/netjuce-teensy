@@ -4,7 +4,10 @@
 
 #include "AudioManager.h"
 
-AudioManager::AudioManager(ProgramContext &c) : Component(c), njc(c) {}
+AudioManager::AudioManager(ProgramContext &c) :
+        Component(c),
+//        njc(c) {}
+        njc(c.serverIP, c.multicastIP, c.remotePort, c.localPort, DebugMode::NONE) {}
 
 size_t AudioManager::printTo(Print &p) const {
     return p.print("AudioManager");
@@ -23,7 +26,7 @@ bool AudioManager::init() {
 
     AudioMemory(32);
     audioShield.enable();
-    audioShield.volume(.7);
+    audioShield.volume(.8);
 
     context.moduleID.onChange = [this](int value) { wfs.setParamValue("moduleID", value); };
     for (auto &sp: context.sourcePositions) {
@@ -40,6 +43,8 @@ bool AudioManager::init() {
 void AudioManager::loop() {
     if (!njc.isConnected()) {
         njc.connect(2500);
+    } else {
+        njc.loop();
     }
 
     if (usageReportTimer > USAGE_REPORT_INTERVAL) {

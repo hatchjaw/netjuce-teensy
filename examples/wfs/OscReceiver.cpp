@@ -10,7 +10,7 @@ size_t OscReceiver::printTo(Print &p) const {
 }
 
 bool OscReceiver::init() {
-    auto result{1 == udp.beginMulticast(context.multicastIP, context.oscPort)};
+    auto result{1 == udp.beginMulticast(context.oscMulticastIP, context.oscPort)};
 
     if (!result) {
         sprintf(error, "OscReceiver: Failed to join multicast group.");
@@ -21,9 +21,11 @@ bool OscReceiver::init() {
 
 void OscReceiver::loop() {
     int size;
-    // Receiving at ISR rate seemed a bit unstable. This arbitrary µs delay
-    // introduced to mitigate. Seems to improve the situation.
-    if (recvInterval > 100 && (size = udp.parsePacket()) > 0) {
+    // Not clear whether parameter changes sometimes cause Teensy to crash
+    // due to Ethernet getting overloaded, or because of Serial.print debugging
+    // from different interrupts.
+    if ((size = udp.parsePacket()) > 0) {
+//    if (recvInterval > 100 && (size = udp.parsePacket()) > 0) {
         recvInterval = 0;
 //        Serial.printf("Packet size: %d\n", size);
         uint8_t buffer[size];
