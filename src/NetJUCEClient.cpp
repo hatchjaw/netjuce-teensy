@@ -105,11 +105,23 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 }
 
 void NetJUCEClient::update(void) {
+//    receive();
+
+//    checkConnectivity();
+
+    doAudioOutput();
+
+    handleAudioInput();
+
+//    getAudioAndSend();
+
+//    adjustClock();
+}
+
+void NetJUCEClient::loop() {
     receive();
 
     checkConnectivity();
-
-    doAudioOutput();
 
     send();
 
@@ -119,27 +131,42 @@ void NetJUCEClient::update(void) {
 void NetJUCEClient::adjustClock() {
     if (driftCheckTimer > 10000 && !peers.empty()) {
         driftCheckTimer = 0;
-        // Try to find the server.
-        auto peer{peers.find(adapterIP)};
-        if (peer != peers.end()) {
-            auto drift = peer->second->getDriftRatio(true);
+
+        // Try to cache the map iterator for the server.
+        if (server == peers.end()) {
+            server = peers.find(adapterIP);
+        }
+        if (server != peers.end()) {
+            auto drift = server->second->getDriftRatio(true);
 
             // PLL4:
-            // TODO: use drift to set c0 directly instead.
+            // Defaults are: DIV = 28, NUM = 2240, DENOM = 10000
+            // PLL4 MAIN CLOCK = 24000000 * (DIV + NUM/DENOM) = 677.3592 MHz
+            // 677.3592 MHz /4 /15 = 11.2896 MHz = 256 * 44100
+            // But this doesn't quite make sense, as it will tend toward a
+            // situation where writes == reads, thus fs = 44100, which it isn't,
+            // at least not relative to the server, which is treated as
+            // authoritative. At best it's a reactive system; maybe that's
+            // enough for now.
             auto fs = AUDIO_SAMPLE_RATE_EXACT * drift;
             Serial.printf("Setting sample rate: %.7f", fs);
-            // PLL between 27*24 = 648MHz und 54*24=1296MHz
-            int n1 = 4; //SAI prescaler 4 => (n1*n2) = multiple of 4
-            int n2 = 1 + (24000000 * 27) / (fs * 256 * n1);
+            int sai1PRED = 4;
+            // This is lifted directly from output_i2s.cpp.
+            int sai1PODF = 1 + (24000000 * 27) / (fs * 256 * sai1PRED); // Should evaluate to 15
 
-            double C = ((double) fs * 256 * n1 * n2) / 24000000;
-            int c0 = C;
-            int c2 = 10000;
-            int c1 = C * c2 - (c0 * c2);
-            Serial.printf(" (C %.9f, nfact %d nmult %d ndiv %d)\n\n", C, c0, c1, c2);
+            double C = ((double) fs * 256 * sai1PRED * sai1PODF) / 24000000;
+            int div = C;
+            int denom = 10000;
+            int num = C * denom - (div * denom);
+            Serial.printf(" (C %.9f, nfact %d nmult %d ndiv %d)\n\n", C, div, num, denom);
 //            CCM_ANALOG_PLL_AUDIO &= CCM_ANALOG_PLL_AUDIO_BYPASS;
 //            CCM_ANALOG_PLL_AUDIO &= CCM_ANALOG_PLL_AUDIO_POWERDOWN; // Switch off PLL
-            set_audioClock(c0, c1, c2, true);
+            set_audioClock(div, num, denom, true);
+//            CCM_CSCMR1 = (CCM_CSCMR1 & ~(CCM_CSCMR1_SAI1_CLK_SEL_MASK))
+//                         | CCM_CSCMR1_SAI1_CLK_SEL(2); // &0x03 // (0,1,2): PLL3PFD0, PLL5, PLL4
+//            CCM_CS1CDR = (CCM_CS1CDR & ~(CCM_CS1CDR_SAI1_CLK_PRED_MASK | CCM_CS1CDR_SAI1_CLK_PODF_MASK))
+//                         | CCM_CS1CDR_SAI1_CLK_PRED(sai1PRED - 1) // &0x07 -- /4
+//                         | CCM_CS1CDR_SAI1_CLK_PODF(sai1PODF - 1); // &0x3f -- /15
         }
     }
 }
@@ -276,7 +303,25 @@ void NetJUCEClient::doAudioOutput() {
     }
 }
 
-void NetJUCEClient::send() {
+void NetJUCEClient::handleAudioInput() {
+    audio_block_t *inBlock[num_inputs];
+    for (int channel = 0; channel < num_inputs; channel++) {
+        inBlock[channel] = receiveReadOnly(channel);
+        // Only proceed if a block was returned, i.e. something is connected
+        // to one of this object's input channels.
+        if (inBlock[channel]) {
+            outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
+            release(inBlock[channel]);
+        } else {
+            // Send zeros.
+            outgoingPacket.clearAudioData(channel);
+        }
+    }
+
+    packetReady = true;
+}
+
+void NetJUCEClient::getAudioAndSend() {
     if (!joined /*|| !connected*/) return;
 
     // Copy audio to the outgoing packet.
@@ -309,6 +354,28 @@ void NetJUCEClient::send() {
     }
 
     outgoingPacket.incrementSeqNumber();
+}
+
+void NetJUCEClient::send() {
+    if (joined && packetReady) {
+        packetReady = false;
+
+        // TODO: check for failures and such.
+        outgoingPacket.writeHeader();
+        socket.beginPacket(multicastIP, remotePort);
+        socket.write(outgoingPacket.getData(), outgoingPacket.getSize());
+        socket.endPacket();
+
+        if (debugMode >= DebugMode::HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
+            Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
+            Serial.print("Destination: ");
+            Serial.print(multicastIP);
+            Serial.printf(":%d\n", remotePort);
+            hexDump(outgoingPacket.getData(), static_cast<int>(outgoingPacket.getSize()), true);
+        }
+
+        outgoingPacket.incrementSeqNumber();
+    }
 }
 
 void NetJUCEClient::setDebugMode(DebugMode mode) {

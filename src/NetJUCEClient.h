@@ -67,20 +67,32 @@ public:
 
     void setDebugMode(DebugMode mode);
 
+    /**
+     * Operations that occur on the loop ISR.
+     */
+    void loop();
+
 private:
     const uint16_t kReceiveTimeoutMs{5000};
 
+    /**
+     * Operations that occur on the audio ISR.
+     */
     void update(void) override;
 
     void receive();
 
     void doAudioOutput();
 
-    void send();
+    void getAudioAndSend();
 
     void checkConnectivity();
 
     void adjustClock();
+
+    void handleAudioInput();
+
+    void send();
 
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
@@ -114,12 +126,14 @@ private:
     // https://en.cppreference.com/w/cpp/container/unordered_map
     std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>> peers;
     std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>>::iterator server;
-//    std::iterator<uint32_t, std::unique_ptr<NetAudioPeer>> server;
+
     int16_t **audioBlock;
 
     DatagramAudioPacket outgoingPacket, incomingPacket;
 
     DebugMode debugMode;
+
+    volatile bool packetReady{false};
 };
 
 #endif //NETJUCE_NETJUCECLIENT_H

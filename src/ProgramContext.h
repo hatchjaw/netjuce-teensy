@@ -40,6 +40,7 @@ using SourcePositionsMap = std::unordered_map<std::string, SmoothedValue<float>>
 struct ProgramContext {
     IPAddress serverIP;
     IPAddress multicastIP;
+    IPAddress oscMulticastIP;
     uint16_t audioPort;
     uint16_t oscPort;
     uint16_t localPort;

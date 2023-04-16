@@ -45,9 +45,7 @@ void CircularBuffer<T>::clear() {
 //    memset(buffer[0], 0, kNumChannels * kLength * sizeof(T));
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
-        for (int s = 0; s < kLength; ++s) {
-            buffer[ch][s] = 0;
-        }
+        memset(buffer[ch], 0, kLength * sizeof(T));
     }
 
     readPos = kFloatLength * .25f;
@@ -200,13 +198,17 @@ T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float al
 
 template<typename T>
 float CircularBuffer<T>::getDriftRatio(bool andPrint) {
-    if (andPrint) debugTimer = 0;
+    // writes > reads, the server is running fast; ratio > 1; client should speed up.
+    // writes < reads, the client is running fast; ratio < 1; client should slow down.
+    driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
     // ...But this assumes that buffer size is the same for server and clients,
     // which it needn't necessarily be.
-    driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
-    Serial.printf("writes %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
-                  numBlockWrites, //blocksWrittenSinceLastUpdate,
-                  numBlockReads, //blocksReadSinceLastUpdate,
-                  driftRatio);
+    if (andPrint) {
+        debugTimer = 0;
+        Serial.printf("writes %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
+                      numBlockWrites, //blocksWrittenSinceLastUpdate,
+                      numBlockReads, //blocksReadSinceLastUpdate,
+                      driftRatio);
+    }
     return driftRatio;
 }
