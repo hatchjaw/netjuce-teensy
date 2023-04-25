@@ -49,8 +49,6 @@ constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum D
 
 class NetJUCEClient : public AudioStream {
 public:
-    explicit NetJUCEClient(ProgramContext &);
-
     NetJUCEClient(IPAddress &networkAdapterIPAddress,
                   IPAddress &multicastIPAddress,
                   uint16_t remotePortNumber = DEFAULT_REMOTE_PORT,

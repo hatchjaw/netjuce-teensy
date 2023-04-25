@@ -75,16 +75,23 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
         }
     }
 
-    if (readMode == ReadMode::RESAMPLE) {
-        ++numBlockWrites;
-        ++blocksWrittenSinceLastUpdate;
-    }
+//    if (readMode == ReadMode::RESAMPLE) {
+    ++numBlockWrites;
+    ++blocksWrittenSinceLastUpdate;
+//    }
 //    Serial.printf("write end -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
 }
 
 template<typename T>
 void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
+//    Serial.println("About to check readMode.");
+//    Serial.printf("readMode = %d\n", readMode);
+    // TODO: FIX THIS CRASH.
+    // THERE'S A CRASH HERE, WHEN THE SERVER RESTARTS, IMMEDIATELY AFTER THE
+    // CLIENT RECONNECTS; APPARENTLY readMode HASN'T BEEN INITIALISED BY THE
+    // TIME THIS METHOD IS CALLED.
     if (readMode == ReadMode::RESAMPLE) {
+//        Serial.println("Using RESAMPLE mode.");
 //        setReadPosIncrement();
         auto initialReadPos{readPos};
 
@@ -135,6 +142,8 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
         }
     } else {
         //    Serial.printf("read start -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
+        auto initialReadPos{readIndex};
+
         for (uint16_t n = 0; n < len; ++n, ++readIndex) {
             if (readIndex == kLength) {
                 readIndex = 0;
@@ -143,6 +152,30 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             for (int ch = 0; ch < kNumChannels; ++ch) {
                 bufferToFill[ch][n] = buffer[ch][readIndex];
             }
+
+            int rwDelta;
+            if (readIndex > writeIndex) {
+                rwDelta = writeIndex + kLength - readIndex;
+            } else {
+                rwDelta = writeIndex - readPos;
+            }
+
+            // Visualise the state of the read-write delta.
+            if (debugMode == DebugMode::RW_DELTA_VISUALISER && n % 8 == 0 && debugTimer > 5000) {
+                auto r{static_cast<int>(roundf(100.f * (1.f - (static_cast<float>(rwDelta) / kFloatLength))))};
+                auto temp{visualiser[r]};
+                visualiser[r] = '#';
+                Serial.printf("%s %d (+%.8f)\n", visualiser, rwDelta, 1.f);
+                visualiser[r] = temp;
+            }
+        }
+
+        if (0 == numBlockWrites) {
+            readPos = initialReadPos;
+            readPosAllTime = 0.;
+        } else {
+            ++numBlockReads;
+            ++blocksReadSinceLastUpdate;
         }
         //    Serial.printf("read end -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
     }

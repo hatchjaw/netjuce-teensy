@@ -1,10 +1,7 @@
 declare name "Distributed WFS";
 declare description "Basic WFS for a distributed setup consisting of modules that each handle two output channels.";
 import("stdfaust.lib");
-import("WFS_Params.lib");
-
-// Set which speakers to control.
-moduleID = hslider("moduleID", 0, 0, (N_SPEAKERS / SPEAKERS_PER_MODULE) - 1, 1);
+import("WFS_Params_2.lib");
 
 // Simulate distance by changing gain and applying a lowpass as a function
 // of distance
@@ -25,9 +22,15 @@ with{
 // Create a speaker array *perspective* for one source
 // i.e. give each source a distance simulation and a delay
 // relative to each speaker.
-speakerArray(x, y) = _ <:
+speakerArray(x, y, s, id) = _ <:
     par(i, SPEAKERS_PER_MODULE, distanceSim(hypotenuse(i)) : de.fdelay(MAX_DELAY, smallDelay(i)))
 with{
+    // Number of samples it takes sound to travel one meter.
+    samplesPerMeter = ma.SR/CELERITY;
+
+    // Number of samples it takes sound to traverse the speaker array.
+    MAX_DELAY = (N_SPEAKERS-1)*s*samplesPerMeter;
+
     // y (front-to-back) is always just y, the longitudinal
     // distance of the source from the array.
     // Get x between the source and specific speaker in the array
@@ -45,25 +48,38 @@ with{
     //
     //               let m = 0, j = 0, x = 2.25
     //                  cx = 2.25 - .25*(0*2 + 0) = 2.25
-    cathetusX(k) = x - (SPEAKER_DIST*(k + moduleID*2));
+    cathetusX(k) = x - (s*(k + id*2));
     hypotenuse(j) = cathetusX(j)^2 + y^2 : sqrt;
-    smallDelay(j) = (hypotenuse(j) - y)*SAMPLES_PER_METRE;
+    smallDelay(j) = (hypotenuse(j) - y)*samplesPerMeter;
 };
 
 // Take each source...
 sourcesArray(s) = par(i, ba.count(s), ba.take(i + 1, s) :
     // ...and distribute it across the speaker array for this module.
-    speakerArray(x(i), y(i)))
+    speakerArray(x(i), y(i), spacing, moduleID))
     // Merge onto the output speakers.
     :> par(i, SPEAKERS_PER_MODULE, _)
 with{
+    globalGroup(x) = vgroup("Globals", x);
+    // Set which speakers to control.
+    moduleID = globalGroup(hslider("moduleID", 0, 0, (N_SPEAKERS / SPEAKERS_PER_MODULE) - 1, 1));
+    // Set speaker spacing (m)
+    spacing = globalGroup(hslider("spacing[unit:m]", .2, .05, MAX_SPEAKER_DIST, .01));
+
+    maxX = spacing*(N_SPEAKERS-1);
+    posGroup(x) = vgroup("Source Positions", x);
     // Use normalised input co-ordinate space; scale to dimensions.
 
     // X position lies on the width of the speaker array
-    x(p) = hslider("%p/x", 0, 0, 1, 0.001) : si.smoo : *(SPEAKER_DIST*N_SPEAKERS);
-    // x(p) = hslider("%p/x", 0, 0, 1, 0.001) : *(SPEAKER_DIST*N_SPEAKERS);
+    // Until a way can be found to smooth position updates before calling
+    // wfs.setParamValue([pos], [value]), use si.smoo.
+    x(p) = hslider("%p/x", 0, 0, 1, 0.001) : si.smoo : *(spacing*(N_SPEAKERS-1));
+    // x(p) = posGroup(hslider("%p/x", 0, 0, 1, 0.001) : *(spacing*(N_SPEAKERS-1)));
+    // x(p) = hslider("%p/x", 0, 0, 1, 0.001) : *(maxX);
+
     // Y position is from zero (on the array) to a quasi-arbitrary maximum.
     y(p) = hslider("%p/y", 0, 0, 1, 0.001) : si.smoo : *(MAX_Y_DIST);
+    // y(p) = posGroup(hslider("%p/y", 0, 0, 1, 0.001) : *(MAX_Y_DIST));
     // y(p) = hslider("%p/y", 0, 0, 1, 0.001) : *(MAX_Y_DIST);
 };
 

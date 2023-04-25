@@ -5,7 +5,7 @@
 #ifndef NETJUCE_TEENSY_CIRCULARBUFFER_H
 #define NETJUCE_TEENSY_CIRCULARBUFFER_H
 
-#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 16)
+#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 8)
 
 #include <Arduino.h>
 #include "SmoothedValue.h"
@@ -70,7 +70,7 @@ private:
     float readPos{0.f};
     SmoothedValue<float> readPosIncrement{1.f};
     uint64_t numBlockReads{0}, numBlockWrites{0}, numSampleWrites{0}, numSampleReads{0};
-    uint32_t blocksReadSinceLastUpdate, blocksWrittenSinceLastUpdate;
+    uint32_t blocksReadSinceLastUpdate{0}, blocksWrittenSinceLastUpdate{0};
     float driftRatio{1.f};
     float readPosAllTime{0.f};
     OperationType lastOp{UNKNOWN};

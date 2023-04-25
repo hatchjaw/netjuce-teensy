@@ -32,10 +32,7 @@ private:
     T value;
 };
 
-template
-struct Listenable<int>;
-
-using SourcePositionsMap = std::unordered_map<std::string, SmoothedValue<float>>;
+using SourcePositionsMap = std::unordered_map<std::string, SmoothedValue_V2<double>>;
 
 struct ProgramContext {
     IPAddress serverIP;
@@ -47,6 +44,7 @@ struct ProgramContext {
     uint16_t remotePort;
     int numSources;
     Listenable<int> moduleID;
+    Listenable<float> speakerSpacing;
     SourcePositionsMap sourcePositions;
 };
 

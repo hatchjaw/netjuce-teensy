@@ -1,0 +1,17 @@
+// Speed of sound (c)
+CELERITY = 343;
+
+// max Y distance, in meters, that a virtual source can be from the speaker array
+MAX_Y_DIST = 10;
+
+// Number of speakers in the speaker array.
+N_SPEAKERS = 16;
+
+// Each module (Teensy) controls two speakers.
+SPEAKERS_PER_MODULE = 2;
+
+// Number of sound sources (i.e. mono channels)
+N_SOURCES = 8;
+
+// This looks to be the maximum for now, based on 16 speakers.
+MAX_SPEAKER_DIST = .45;

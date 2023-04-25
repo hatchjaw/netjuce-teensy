@@ -10,10 +10,14 @@ size_t OscReceiver::printTo(Print &p) const {
 }
 
 bool OscReceiver::init() {
-    auto result{1 == udp.beginMulticast(context.oscMulticastIP, context.oscPort)};
+    auto result{1 == udp.beginMulticast(context.multicastIP, context.oscPort)};
 
     if (!result) {
         sprintf(error, "OscReceiver: Failed to join multicast group.");
+    } else {
+        Serial.print("OscReceiver: joined multicast group at ");
+        Serial.print(context.multicastIP);
+        Serial.printf(F(", listening on port %d\n"), context.oscPort);
     }
 
     return result;
@@ -21,12 +25,8 @@ bool OscReceiver::init() {
 
 void OscReceiver::loop() {
     int size;
-    // Not clear whether parameter changes sometimes cause Teensy to crash
-    // due to Ethernet getting overloaded, or because of Serial.print debugging
-    // from different interrupts.
+
     if ((size = udp.parsePacket()) > 0) {
-//    if (recvInterval > 100 && (size = udp.parsePacket()) > 0) {
-        recvInterval = 0;
 //        Serial.printf("Packet size: %d\n", size);
         uint8_t buffer[size];
         udp.read(buffer, size);
@@ -39,6 +39,7 @@ void OscReceiver::loop() {
 
             bundleIn.route("/source", [this](OSCMessage &msg, int addrOffset) { parsePosition(msg, addrOffset); });
             bundleIn.route("/module", [this](OSCMessage &msg, int addrOffset) { parseModule(msg, addrOffset); });
+            bundleIn.route("/spacing", [this](OSCMessage &msg, int addrOffset) { parseSpacing(msg, addrOffset); });
         } else {
             // Try as message
             messageIn.empty();
@@ -48,6 +49,7 @@ void OscReceiver::loop() {
 
                 messageIn.route("/source", [this](OSCMessage &msg, int addrOffset) { parsePosition(msg, addrOffset); });
                 messageIn.route("/module", [this](OSCMessage &msg, int addrOffset) { parseModule(msg, addrOffset); });
+                messageIn.route("/spacing", [this](OSCMessage &msg, int addrOffset) { parseSpacing(msg, addrOffset); });
             }
         }
     }
@@ -57,30 +59,27 @@ void OscReceiver::parsePosition(OSCMessage &msg, int addrOffset) {
     // Get the source index and coordinate axis, e.g. "0/x"
     char path[20];
     msg.getAddress(path, addrOffset + 1);
-    // Rough-and-ready check to prevent attempting to set an invalid source
-    // position.
-//    auto sourceIdx{atoi(path)};
-//    if (sourceIdx >= jtc.getNumChannels()) {
-//        Serial.printf("Invalid source index: %d\n", sourceIdx);
-//        return;
-//    }
     // Get the coordinate value (0-1).
     auto pos = msg.getFloat(0);
-    Serial.printf("Setting \"%s\": %f\n", path, pos);
+//    Serial.printf("Receiving \"%s\": %f\n", path, pos);
     // Set the parameter.
-//    auto it{context.sourcePositions.find(path)};
-//    if (it == context.sourcePositions.end()) {
-//        context.sourcePositions.insert(std::make_pair(path, SmoothedValue<float>{pos}));
-//    } else {
-//        it->second.set(pos);
-//    }
-
     auto it{context.sourcePositions.find(path)};
     if (it != context.sourcePositions.end()) {
         it->second.set(pos);
     }
 }
 
+void OscReceiver::parseSpacing(OSCMessage &msg, int addrOffset) {
+    auto spacing = msg.getFloat(0);
+    context.speakerSpacing = spacing;
+}
+
+/**
+ * TODO: maybe switch to uint32 for representing IPs
+ * (dependent on whether this is practical in JUCE).
+ * @param msg
+ * @param addrOffset
+ */
 void OscReceiver::parseModule(OSCMessage &msg, int addrOffset) {
     char ipString[15];
     IPAddress ip;
@@ -90,7 +89,7 @@ void OscReceiver::parseModule(OSCMessage &msg, int addrOffset) {
         char id[2];
         msg.getAddress(id, addrOffset + 1);
         auto numericID = strtof(id, nullptr);
-        Serial.printf("Setting module ID: %f\n", numericID);
+//        Serial.printf("Receiving module ID: %f\n", numericID);
         context.moduleID = numericID;
     }
 }

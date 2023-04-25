@@ -23,12 +23,13 @@ private:
 
     void parseModule(OSCMessage &msg, int addrOffset);
 
+    void parseSpacing(OSCMessage &msg, int addrOffset);
+
     void parsePosition(OSCMessage &msg, int addrOffset);
 
     EthernetUDP udp;
     OSCBundle bundleIn;
     OSCMessage messageIn;
-    elapsedMicros recvInterval;
 };
 
 

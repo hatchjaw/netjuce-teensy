@@ -14,12 +14,12 @@ bool ContextManager::init() {
         sprintf(path, "%d/x", i);
         context.sourcePositions.insert(SourcePositionsMap::value_type(
                 path,
-                SmoothedValue<float>{0.f, .0001, 1e-6})
+                SmoothedValue_V2<double>{0., .999f})
         );
         sprintf(path, "%d/y", i);
         context.sourcePositions.insert(SourcePositionsMap::value_type(
                 path,
-                SmoothedValue<float>{0.f, .0001, 1e-6})
+                SmoothedValue_V2<double>{0., .999f})
         );
     }
 
@@ -28,7 +28,7 @@ bool ContextManager::init() {
 
 void ContextManager::loop() {
     // Move smoothed values along.
-    for (auto &it: context.sourcePositions) {
-        it.second.getNext();
-    }
+//    for (auto &it: context.sourcePositions) {
+//        it.second.getNext();
+//    }
 }

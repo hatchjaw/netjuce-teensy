@@ -29,23 +29,28 @@ public:
         UNDEF
     };
 
-    struct PacketHeader {//: public Printable {
-    public:
+    struct PacketHeader { //: public Printable {
         uint16_t SeqNumber;
         uint8_t BufferSize;
         uint8_t SamplingRate;
         uint8_t BitResolution;
         uint8_t NumChannels;
 
-//    size_t printTo(Print &p) const override {
-//        p.printf("SeqNumber: %d, BufferSize: %d, NumChannels: %d", SeqNumber, BufferSize, NumChannels);
-//        return 0;
-//    }
+//        size_t printTo(Print &p) const override {
+//            return p.printf("SeqNumber: %d, BufferSize: %d, NumChannels: %d", SeqNumber, BufferSize, NumChannels);
+//        }
     };
 
-    struct Origin {
+    struct Origin { //: public Printable {
         IPAddress IP;
         uint16_t Port;
+
+//        size_t printTo(Print &p) const override {
+//            size_t ret{0};
+//            ret += p.print(IP);
+//            ret += p.printf(":%" PRIu16, Port);
+//            return ret;
+//        }
     };
 
     /**

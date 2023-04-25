@@ -6,22 +6,6 @@
 #include <TeensyID.h>
 #include <imxrt_hw.h>
 
-NetJUCEClient::NetJUCEClient(ProgramContext &context) :
-        AudioStream(NUM_SOURCES, new audio_block_t *[NUM_SOURCES]),
-        adapterIP(context.serverIP),
-        multicastIP(context.multicastIP),
-        remotePort(context.remotePort),
-        localPort(context.localPort),
-        audioBlock{new int16_t *[NUM_SOURCES]},
-        outgoingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
-        incomingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
-        debugMode(DebugMode::NONE) {
-
-    for (int ch = 0; ch < NUM_SOURCES; ++ch) {
-        audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
-    }
-}
-
 NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
                              IPAddress &multicastIPAddress,
                              uint16_t remotePortNumber,
@@ -87,7 +71,7 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
         return;
     }
 
-    Serial.print(F("Joining multicast group at "));
+    Serial.print(F("NetJUCEClient: Joining multicast group at "));
     Serial.print(multicastIP);
     Serial.printf(F(", listening on port %d... "), localPort);
 
@@ -97,6 +81,7 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
         Serial.println(F("Success!"));
         receiveTimer = 0;
         receivedCount = 0;
+        peerCheckTimer = 0;
         outgoingPacket.reset();
     } else {
         Serial.println(F("Failed."));
@@ -146,8 +131,13 @@ void NetJUCEClient::adjustClock() {
             // But this doesn't quite make sense, as it will tend toward a
             // situation where writes == reads, thus fs = 44100, which it isn't,
             // at least not relative to the server, which is treated as
-            // authoritative. At best it's a reactive system; maybe that's
+            // authoritative. At best, it's a reactive system; maybe that's
             // enough for now.
+            //
+            // Also, if a client is disconnected and reconnected before it has
+            // time to recognise that it's not still on the network, reads
+            // continue to accumulate while writes stay static, and an
+            // inaccurate drift ratio results.
             auto fs = AUDIO_SAMPLE_RATE_EXACT * drift;
             Serial.printf("Setting sample rate: %.7f", fs);
             int sai1PRED = 4;
@@ -158,15 +148,8 @@ void NetJUCEClient::adjustClock() {
             int div = C;
             int denom = 10000;
             int num = C * denom - (div * denom);
-            Serial.printf(" (C %.9f, nfact %d nmult %d ndiv %d)\n\n", C, div, num, denom);
-//            CCM_ANALOG_PLL_AUDIO &= CCM_ANALOG_PLL_AUDIO_BYPASS;
-//            CCM_ANALOG_PLL_AUDIO &= CCM_ANALOG_PLL_AUDIO_POWERDOWN; // Switch off PLL
+            Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
             set_audioClock(div, num, denom, true);
-//            CCM_CSCMR1 = (CCM_CSCMR1 & ~(CCM_CSCMR1_SAI1_CLK_SEL_MASK))
-//                         | CCM_CSCMR1_SAI1_CLK_SEL(2); // &0x03 // (0,1,2): PLL3PFD0, PLL5, PLL4
-//            CCM_CS1CDR = (CCM_CS1CDR & ~(CCM_CS1CDR_SAI1_CLK_PRED_MASK | CCM_CS1CDR_SAI1_CLK_PODF_MASK))
-//                         | CCM_CS1CDR_SAI1_CLK_PRED(sai1PRED - 1) // &0x07 -- /4
-//                         | CCM_CS1CDR_SAI1_CLK_PODF(sai1PODF - 1); // &0x3f -- /15
         }
     }
 }
@@ -178,7 +161,7 @@ void NetJUCEClient::receive() {
 
     while ((packetSize = socket.parsePacket()) > 0) {
         ++receivedCount;
-        connected = true;
+//        connected = true;
         receiveTimer = 0;
 
         socket.read(packetBuffer, packetSize);
@@ -191,10 +174,7 @@ void NetJUCEClient::receive() {
         auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
 
         // There's about to be at least one peer so confirm connectedness.
-        if (peers.empty()) {
-            driftCheckTimer = 0;
-            connected = true;
-        }
+        auto shouldSetConnected{peers.empty()};
 
         incomingPacket.fromRawPacketData(remoteIP, port, packetBuffer);
         auto iter{peers.find(rawIP)};
@@ -204,6 +184,7 @@ void NetJUCEClient::receive() {
             iter = peers.insert(std::make_pair(rawIP, std::make_unique<NetAudioPeer>(incomingPacket))).first;
             auto o{iter->second->getOrigin()};
             Serial.print("\nPeer ");
+//            Serial.print(o);
             Serial.print(o.IP);
             Serial.printf(":%" PRIu16, o.Port);
             Serial.print(" connected.\n\n");
@@ -216,6 +197,7 @@ void NetJUCEClient::receive() {
             for (auto &peer: peers) {
                 Serial.println(IPAddress{peer.first});
             }
+//            Serial.println(*headerIn);
             Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
                           headerIn->SeqNumber,
                           headerIn->BufferSize,
@@ -226,10 +208,22 @@ void NetJUCEClient::receive() {
             Serial.printf("Bytes per channel: %d\n", bytesPerChannel);
             hexDump(packetBuffer, packetSize, true);
         }
+
+        // Set connectedness _after_ first packet has been handled and peer is
+        // set up correctly, to avoid a race condition with doAudioOutput().
+        // NB. doesn't work.
+        if (shouldSetConnected) {
+            driftCheckTimer = 0;
+            peerCheckTimer = 0;
+            connected = true;
+        }
     }
 }
 
 void NetJUCEClient::checkConnectivity() {
+//    Serial.print("peerCheckTimer: ");
+//    Serial.print(peerCheckTimer);
+//    Serial.printf(peers.empty() ? ", empty\n" : ", not empty\n");
     if (peerCheckTimer > 1000 && !peers.empty()) {
         peerCheckTimer = 0;
         for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
@@ -241,9 +235,9 @@ void NetJUCEClient::checkConnectivity() {
                 Serial.printf(":%" PRIu16, o.Port);
                 Serial.print(" disconnected.\n\n");
                 peers.erase(it);
-                connected = !peers.empty();
             }
         }
+        connected = !peers.empty();
     }
 
     if (receiveTimer > kReceiveTimeoutMs) {

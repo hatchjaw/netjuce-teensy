@@ -8,7 +8,7 @@ NetAudioPeer::NetAudioPeer(DatagramAudioPacket &firstPacket) :
         origin(firstPacket.getOrigin()),
         receiveTimer(0),
         audioBuffer(std::make_unique<CB16>(
-                firstPacket.getNumAudioChannels(),
+                firstPacket.getNumAudioChannels(), // Will break if number of channels is greater than NUM_SOURCES
                 CIRCULAR_BUFFER_SIZE,
                 CB16::ReadMode::RESAMPLE,
                 CB16::DebugMode::NONE)

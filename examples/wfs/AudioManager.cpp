@@ -6,7 +6,6 @@
 
 AudioManager::AudioManager(ProgramContext &c) :
         Component(c),
-//        njc(c) {}
         njc(c.serverIP, c.multicastIP, c.remotePort, c.localPort, DebugMode::NONE) {}
 
 size_t AudioManager::printTo(Print &p) const {
@@ -29,12 +28,16 @@ bool AudioManager::init() {
     audioShield.volume(.8);
 
     context.moduleID.onChange = [this](int value) { wfs.setParamValue("moduleID", value); };
+    context.speakerSpacing.onChange = [this](float value) { wfs.setParamValue("spacing", value); };
     for (auto &sp: context.sourcePositions) {
-        sp.second.onChange = [this, sp](float value) {
-//            Serial.printf("%s changed: %.9f\n", sp.first.c_str(), value);
-            Utils::clamp(value, 0.f, 1.f);
+        sp.second.onSet = [this, sp](double value) {
             wfs.setParamValue(sp.first, value);
         };
+//        sp.second.onChange = [this, sp](double value) {
+////            Serial.printf("%s changed: %.9f\n", sp.first.c_str(), value);
+////            Utils::clamp(value, 0.f, 1.f);
+//            wfs.setParamValue(sp.first, value);
+//        };
     }
 
     return true;

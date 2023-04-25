@@ -8,7 +8,8 @@
 #include "Component.h"
 #include <vector>
 #include <Audio.h>
-#include "WFS/WFS.h"
+//#include "WFS/WFS.h"
+#include "WFS2/WFS2.h"
 #include <NetJUCEClient.h>
 #include <Utils.h>
 
@@ -29,7 +30,7 @@ private:
     AudioControlSGTL5000 audioShield;
     AudioOutputI2S out;
     NetJUCEClient njc;
-    WFS wfs;
+    WFS2 wfs;
     std::vector<std::unique_ptr<AudioConnection>> patchCords;
 };
 
