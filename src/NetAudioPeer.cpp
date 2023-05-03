@@ -38,3 +38,7 @@ const DatagramAudioPacket::Origin &NetAudioPeer::getOrigin() const {
 float NetAudioPeer::getDriftRatio(bool andPrint) {
     return audioBuffer->getDriftRatio(andPrint);
 }
+
+void NetAudioPeer::resetDriftRatio() {
+    audioBuffer->clear();
+}

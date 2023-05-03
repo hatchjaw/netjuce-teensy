@@ -114,13 +114,15 @@ void NetJUCEClient::loop() {
 }
 
 void NetJUCEClient::adjustClock() {
-    if (driftCheckTimer > 10000 && !peers.empty()) {
+    // Try to adjust the clock every 30 seconds.
+    if (driftCheckTimer > 30000 && !peers.empty()) {
         driftCheckTimer = 0;
 
-        // Try to cache the map iterator for the server.
-        if (server == peers.end()) {
-            server = peers.find(adapterIP);
-        }
+//        // Try to cache the map iterator for the server.
+//        if (server == peers.end()) {
+//            server = peers.find(adapterIP);
+//        }
+        // Proceed if the server is found.
         if (server != peers.end()) {
             auto drift = server->second->getDriftRatio(true);
 
@@ -139,17 +141,22 @@ void NetJUCEClient::adjustClock() {
             // continue to accumulate while writes stay static, and an
             // inaccurate drift ratio results.
             auto fs = AUDIO_SAMPLE_RATE_EXACT * drift;
-            Serial.printf("Setting sample rate: %.7f", fs);
             int sai1PRED = 4;
             // This is lifted directly from output_i2s.cpp.
             int sai1PODF = 1 + (24000000 * 27) / (fs * 256 * sai1PRED); // Should evaluate to 15
-
             double C = ((double) fs * 256 * sai1PRED * sai1PODF) / 24000000;
             int div = C;
             int denom = 10000;
             int num = C * denom - (div * denom);
-            Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
-            set_audioClock(div, num, denom, true);
+
+            if (abs(num - 2240) > 40) {
+                Serial.println("Drift ratio outside of acceptable bounds; resetting.");
+                server->second->resetDriftRatio();
+            } else {
+                Serial.printf("Setting sample rate: %.7f", fs);
+                Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
+                set_audioClock(div, num, denom, true);
+            }
         }
     }
 }
@@ -161,7 +168,6 @@ void NetJUCEClient::receive() {
 
     while ((packetSize = socket.parsePacket()) > 0) {
         ++receivedCount;
-//        connected = true;
         receiveTimer = 0;
 
         socket.read(packetBuffer, packetSize);
@@ -188,6 +194,11 @@ void NetJUCEClient::receive() {
             Serial.print(o.IP);
             Serial.printf(":%" PRIu16, o.Port);
             Serial.print(" connected.\n\n");
+
+            if (o.IP == adapterIP) {
+                // Cache the iterator associated with the server.
+                server = iter;
+            }
         }
         iter->second->handlePacket(incomingPacket);
 
@@ -209,11 +220,10 @@ void NetJUCEClient::receive() {
             hexDump(packetBuffer, packetSize, true);
         }
 
-        // Set connectedness _after_ first packet has been handled and peer is
-        // set up correctly, to avoid a race condition with doAudioOutput().
-        // NB. doesn't work.
         if (shouldSetConnected) {
-            driftCheckTimer = 0;
+            // Set things up so the first clock update will take place after ten
+            // seconds.
+            driftCheckTimer = 20000;
             peerCheckTimer = 0;
             connected = true;
         }
@@ -221,9 +231,6 @@ void NetJUCEClient::receive() {
 }
 
 void NetJUCEClient::checkConnectivity() {
-//    Serial.print("peerCheckTimer: ");
-//    Serial.print(peerCheckTimer);
-//    Serial.printf(peers.empty() ? ", empty\n" : ", not empty\n");
     if (peerCheckTimer > 1000 && !peers.empty()) {
         peerCheckTimer = 0;
         for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
@@ -234,6 +241,11 @@ void NetJUCEClient::checkConnectivity() {
                 Serial.print(o.IP);
                 Serial.printf(":%" PRIu16, o.Port);
                 Serial.print(" disconnected.\n\n");
+
+                if (it == server) {
+                    // Clear cached server iterator.
+                    server = peers.end();
+                }
                 peers.erase(it);
             }
         }
@@ -253,10 +265,14 @@ void NetJUCEClient::checkConnectivity() {
 
 void NetJUCEClient::doAudioOutput() {
     if (connected) {
-        // Try to cache the map iterator for the server.
-        if (server == peers.end()) {
-            server = peers.find(adapterIP);
-        }
+////        Serial.println("Connected (at least one peer exists).");
+//        // Try to cache the map iterator for the server.
+//        if (server == peers.end()) {
+////            Serial.println("Server not cached; attempting to find it.");
+//            server = peers.find(adapterIP);
+//        } else {
+////            Serial.println("Cached server found.");
+//        }
 
         if (server == peers.end()) {
             // Just use the first available peer.
@@ -307,7 +323,7 @@ void NetJUCEClient::handleAudioInput() {
             outgoingPacket.writeAudioData(channel, inBlock[channel]->data);
             release(inBlock[channel]);
         } else {
-            // Send zeros.
+            // Fill the packet with zeros.
             outgoingPacket.clearAudioData(channel);
         }
     }

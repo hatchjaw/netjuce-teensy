@@ -24,8 +24,8 @@ public:
     };
 
     CircularBuffer(uint8_t numChannels, uint16_t length,
-                   ReadMode readMode = ReadMode::NORMAL,
-                   DebugMode debugMode = DebugMode::NONE);
+                   ReadMode readModeToUse = ReadMode::NORMAL,
+                   DebugMode debugModeToUse = DebugMode::NONE);
 
     ~CircularBuffer();
 
@@ -68,7 +68,7 @@ private:
     T **buffer;
     uint16_t writeIndex{0}, readIndex{0};
     float readPos{0.f};
-    SmoothedValue<float> readPosIncrement{1.f};
+    SmoothedValue_V2<double> readPosIncrement{1., .5f};
     uint64_t numBlockReads{0}, numBlockWrites{0}, numSampleWrites{0}, numSampleReads{0};
     uint32_t blocksReadSinceLastUpdate{0}, blocksWrittenSinceLastUpdate{0};
     float driftRatio{1.f};

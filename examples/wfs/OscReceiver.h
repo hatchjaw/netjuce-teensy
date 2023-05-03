@@ -6,7 +6,6 @@
 #define NETJUCE_TEENSY_OSCRECEIVER_H
 
 #include "Component.h"
-#include <functional>
 #include <NativeEthernet.h>
 #include <OSCBundle.h>
 

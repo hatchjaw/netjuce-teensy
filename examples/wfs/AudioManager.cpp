@@ -30,9 +30,12 @@ bool AudioManager::init() {
     context.moduleID.onChange = [this](int value) { wfs.setParamValue("moduleID", value); };
     context.speakerSpacing.onChange = [this](float value) { wfs.setParamValue("spacing", value); };
     for (auto &sp: context.sourcePositions) {
+        // If smoothing in Faust with si.smoo:
         sp.second.onSet = [this, sp](double value) {
+//            Serial.printf("Updating %s: %f\n", sp.first.c_str(), value);
             wfs.setParamValue(sp.first, value);
         };
+        // If smoothing outside of Faust:
 //        sp.second.onChange = [this, sp](double value) {
 ////            Serial.printf("%s changed: %.9f\n", sp.first.c_str(), value);
 ////            Utils::clamp(value, 0.f, 1.f);

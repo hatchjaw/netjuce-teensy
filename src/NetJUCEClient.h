@@ -47,6 +47,10 @@ constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum D
     return (enum DebugMode)(uint32_t(selfValue) | uint32_t(inValue));
 }
 
+// unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
+// https://en.cppreference.com/w/cpp/container/unordered_map
+using PeerMap = std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>>;
+
 class NetJUCEClient : public AudioStream {
 public:
     NetJUCEClient(IPAddress &networkAdapterIPAddress,
@@ -120,10 +124,8 @@ private:
     uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
     uint64_t receivedCount{0};
 
-    // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
-    // https://en.cppreference.com/w/cpp/container/unordered_map
-    std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>> peers;
-    std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>>::iterator server;
+    PeerMap peers;
+    PeerMap::iterator server;
 
     int16_t **audioBlock;
 

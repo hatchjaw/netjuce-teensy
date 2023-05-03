@@ -5,14 +5,16 @@
 #include "CircularBuffer.h"
 
 template<typename T>
-CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode readMode, DebugMode debugMode) :
+CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode readModeToUse,
+                                  DebugMode debugModeToUse) :
         kNumChannels{numChannels},
         kLength{length},
         kFloatLength{static_cast<float>(length)},
-        kRwDeltaThresh(kFloatLength * .225f, kFloatLength * .475f), // TODO: check that first is less than second
+        // TODO: make adjustable; check that first is less than second
+        kRwDeltaThresh(kFloatLength * .225f, kFloatLength * .475f),
         buffer{new T *[numChannels]},
-        debugMode{debugMode},
-        readMode{readMode} {
+        debugMode{debugModeToUse},
+        readMode{readModeToUse} {
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
         buffer[ch] = new T[kLength];
@@ -56,7 +58,7 @@ void CircularBuffer<T>::clear() {
     numSampleWrites = 0;
     numSampleReads = 0;
     readPosAllTime = 0.f;
-    readPosIncrement.set(1., true);
+    readPosIncrement.set(1.);//, true);
     blocksReadSinceLastUpdate = 0;
     blocksWrittenSinceLastUpdate = 0;
     driftRatio = 1.f;
@@ -84,14 +86,7 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
 
 template<typename T>
 void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
-//    Serial.println("About to check readMode.");
-//    Serial.printf("readMode = %d\n", readMode);
-    // TODO: FIX THIS CRASH.
-    // THERE'S A CRASH HERE, WHEN THE SERVER RESTARTS, IMMEDIATELY AFTER THE
-    // CLIENT RECONNECTS; APPARENTLY readMode HASN'T BEEN INITIALISED BY THE
-    // TIME THIS METHOD IS CALLED.
     if (readMode == ReadMode::RESAMPLE) {
-//        Serial.println("Using RESAMPLE mode.");
 //        setReadPosIncrement();
         auto initialReadPos{readPos};
 
@@ -124,7 +119,7 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             readPos += increment;
 
             // Visualise the state of the read-write delta.
-            if (debugMode == DebugMode::RW_DELTA_VISUALISER && n % 8 == 0 && debugTimer > 5000) {
+            if (debugMode == DebugMode::RW_DELTA_VISUALISER && (n == 0 || n == len - 1) && debugTimer > 5000) {
                 auto r{static_cast<int>(roundf(100.f * (1.f - (rwDelta / kFloatLength))))};
                 auto temp{visualiser[r]};
                 visualiser[r] = '#';
@@ -243,5 +238,7 @@ float CircularBuffer<T>::getDriftRatio(bool andPrint) {
                       numBlockReads, //blocksReadSinceLastUpdate,
                       driftRatio);
     }
+//    numBlockWrites = 0;
+//    numBlockReads = 0;
     return driftRatio;
 }

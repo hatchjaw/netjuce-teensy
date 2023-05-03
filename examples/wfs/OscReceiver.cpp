@@ -27,7 +27,7 @@ void OscReceiver::loop() {
     int size;
 
     if ((size = udp.parsePacket()) > 0) {
-//        Serial.printf("Packet size: %d\n", size);
+//        Serial.printf("OSC packet size: %d\n", size);
         uint8_t buffer[size];
         udp.read(buffer, size);
 
@@ -71,6 +71,7 @@ void OscReceiver::parsePosition(OSCMessage &msg, int addrOffset) {
 
 void OscReceiver::parseSpacing(OSCMessage &msg, int addrOffset) {
     auto spacing = msg.getFloat(0);
+    Serial.printf("Receiving \"spacing\": %f\n", spacing);
     context.speakerSpacing = spacing;
 }
 
@@ -89,7 +90,7 @@ void OscReceiver::parseModule(OSCMessage &msg, int addrOffset) {
         char id[2];
         msg.getAddress(id, addrOffset + 1);
         auto numericID = strtof(id, nullptr);
-//        Serial.printf("Receiving module ID: %f\n", numericID);
+        Serial.printf("Receiving module ID: %f\n", numericID);
         context.moduleID = numericID;
     }
 }

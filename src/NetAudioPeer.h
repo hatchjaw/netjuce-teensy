@@ -27,6 +27,8 @@ public:
 
     float getDriftRatio(bool andPrint = false);
 
+    void resetDriftRatio();
+
 private:
     DatagramAudioPacket::Origin origin;
     elapsedMillis receiveTimer;

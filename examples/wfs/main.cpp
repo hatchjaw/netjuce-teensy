@@ -12,6 +12,7 @@
 #include "OscReceiver.h"
 
 #define WAIT_FOR_SERIAL
+//#undef WAIT_FOR_SERIAL
 
 IPAddress multicastIP{226, 6, 38, 226};
 IPAddress adapterIP{192, 168, 10, 10};
