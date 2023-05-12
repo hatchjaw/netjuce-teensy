@@ -10,7 +10,9 @@ DatagramAudioPacket::DatagramAudioPacket(int numChannels, int bufferSize, float 
     data = new uint8_t[size];
 
     header.BitResolution = BIT16;
-    header.BufferSize = bufferSize;
+//    header.BufferSize = bufferSize;
+    header.BufferSize = __builtin_ctz(bufferSize);
+//    Serial.printf("Buffer size: 2^%d = %d\n", header.BufferSize, 1 << header.BufferSize);
     header.NumChannels = numChannels;
     header.SeqNumber = 0;
     switch (static_cast<int>(sampleRate)) {
@@ -104,7 +106,8 @@ uint8_t DatagramAudioPacket::getNumAudioChannels() const {
 }
 
 uint16_t DatagramAudioPacket::getBufferSize() const {
-    return header.BufferSize;
+//    return header.BufferSize;
+    return 1 << header.BufferSize;
 }
 
 void DatagramAudioPacket::getAudioData(const int16_t **buffer) {

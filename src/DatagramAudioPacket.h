@@ -11,6 +11,19 @@
 
 class DatagramAudioPacket {
 public:
+    enum BufferSizeT {
+        BUF8 = 3,
+        BUF16,
+        BUF32,
+        BUF64,
+        BUF128,
+        BUF256,
+        BUF512,
+        BUF1024,
+        BUF2048,
+        BUF4096
+    };
+
     enum BitResolutionT {
         BIT8 = 1,
         BIT16 = 2,
