@@ -177,7 +177,7 @@ void NetJUCEClient::receive() {
         auto rawIP{static_cast<uint32_t>(remoteIP)};
 
         auto headerIn{reinterpret_cast<DatagramAudioPacket::PacketHeader *>(packetBuffer)};
-        auto bytesPerChannel{headerIn->BufferSize * headerIn->BitResolution};
+        auto bytesPerChannel{(1 << headerIn->BufferSize) * headerIn->BitResolution};
 
         // There's about to be at least one peer so confirm connectedness.
         auto shouldSetConnected{peers.empty()};
@@ -211,7 +211,7 @@ void NetJUCEClient::receive() {
 //            Serial.println(*headerIn);
             Serial.printf("RECEIVE: SeqNumber: %d, BufferSize: %d, NumChannels: %d\n",
                           headerIn->SeqNumber,
-                          headerIn->BufferSize,
+                          1 << headerIn->BufferSize,
                           headerIn->NumChannels);
             Serial.print("From: ");
             Serial.print(socket.remoteIP());
@@ -294,7 +294,9 @@ void NetJUCEClient::doAudioOutput() {
 
     if (debugMode >= DebugMode::HEXDUMP_AUDIO_OUT && receivedCount > 0 && receivedCount % 10000 <= 1) {
         Serial.println(F("Audio out, channel 1"));
-        hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 64);
+        hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 32);
+        Serial.println(F("Audio out, channel 2"));
+        hexDump(reinterpret_cast<uint8_t *>(audioBlock[1]), 32);
     }
 
     audio_block_t *outBlock[NUM_SOURCES];

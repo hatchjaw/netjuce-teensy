@@ -50,7 +50,7 @@ DatagramAudioPacket::~DatagramAudioPacket() {
 void DatagramAudioPacket::fromRawPacketData(IPAddress &peerIP, uint16_t peerPort, uint8_t *packetData) {
     origin = {peerIP, peerPort};
     header = *reinterpret_cast<PacketHeader *>(packetData);
-    bytesPerChannel = header.BufferSize * sizeof(int16_t);
+    bytesPerChannel = (1 << header.BufferSize) * sizeof(int16_t);
     // TODO: check whether the new size is different, resize data if necessary.
     size = PACKET_HEADER_SIZE + header.NumChannels * bytesPerChannel;
     memcpy(data, packetData, size);

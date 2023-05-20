@@ -19,7 +19,7 @@ public:
     };
 
     enum ReadMode {
-        NO_RESAMPLE,
+        NO_RESAMPLE = 0,
         RESAMPLE_TRUNCATE,
         RESAMPLE_INTERPOLATE
     };
