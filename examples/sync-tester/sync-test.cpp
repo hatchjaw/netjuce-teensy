@@ -5,12 +5,12 @@
 
 // Wait for a serial connection before proceeding with execution
 #define WAIT_FOR_SERIAL
-//#undef WAIT_FOR_SERIAL
+#undef WAIT_FOR_SERIAL
 
 // Local udp port on which to receive packets.
 const uint16_t kLocalUdpPort = 8888;
 // Remote server IP address -- should match address in IPv4 settings.
-IPAddress multicastIP{226, 6, 38, 226};
+IPAddress multicastIP{224, 4, 224, 4};
 IPAddress adapterIP{192, 168, 10, 10};
 
 // Audio shield driver
@@ -59,7 +59,7 @@ void setup() {
         WAIT_INFINITE();
     }
 
-    client.setDebugMode(DebugMode::HEXDUMP_SEND);
+//    client.setDebugMode(DebugMode::HEXDUMP_SEND);
 }
 
 void loop() {

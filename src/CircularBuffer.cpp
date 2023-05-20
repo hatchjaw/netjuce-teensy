@@ -86,7 +86,7 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
 
 template<typename T>
 void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
-    if (readMode == ReadMode::RESAMPLE) {
+    if (readMode >= RESAMPLE_TRUNCATE) {
 //        setReadPosIncrement();
         auto initialReadPos{readPos};
 
@@ -97,13 +97,16 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
 
             auto readPosIntPart{0.f}, alpha{modff(readPos, &readPosIntPart)};
             auto readPosInt{static_cast<int>(readPosIntPart)};
-            // For each channel, get the next sample, interpolated around readPos.
+            // For each channel, get the next sample, interpolated (or
+            // truncated) around readPos.
             for (int ch{0}; ch < kNumChannels; ++ch) {
-                bufferToFill[ch][n] = interpolateCubic(buffer[ch], readPosInt, alpha);
+                bufferToFill[ch][n] = readMode == RESAMPLE_INTERPOLATE ?
+                                      interpolateCubic(buffer[ch], readPosInt, alpha) :
+                                      buffer[ch][readPosInt];
             }
 
-            // Try to keep read position a consistent, safe distance behind write
-            // index.
+            // Try to keep read position a consistent, safe distance behind
+            // write index.
             auto rwDelta{getReadWriteDelta()};
 
             if (rwDelta < kRwDeltaThresh.first) {

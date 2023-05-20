@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------
 name: "SyncTester"
-Code generated with Faust 2.54.9 (https://faust.grame.fr)
-Compilation options: -a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -es 1 -mcd 16 -uim -single -ftz 0
+Code generated with Faust 2.58.13 (https://faust.grame.fr)
+Compilation options: -a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -uim -single -ftz 0
 ------------------------------------------------------------ */
 
 #ifndef  __mydsp_H__
@@ -133,7 +133,13 @@ Compilation options: -a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -e
 #ifndef __export__
 #define __export__
 
-#define FAUSTVERSION "2.54.9"
+// Version as a global string
+#define FAUSTVERSION "2.58.13"
+
+// Version as separated [major,minor,patch] values
+#define FAUSTMAJORVERSION 2
+#define FAUSTMINORVERSION 58
+#define FAUSTPATCHVERSION 13
 
 // Use FAUST_API for code that is part of the external API but is also compiled in faust and libfaust
 // Use LIBFAUST_API for code that is compiled in faust and libfaust
@@ -353,8 +359,9 @@ class FAUST_API PathBuilder {
             std::map<std::string, std::string> unique2full;  // all full paths transformed but made unique with a prefix
             char num_buffer[16];
             int pnum = 0;
-        
+            
             for (const auto& s : fFullPaths) {
+                // Using sprintf since Teensy does not have the std::to_string function
                 sprintf(num_buffer, "%d", pnum++);
                 std::string u = "/P" + std::string(num_buffer) + str2ID(remove0x00(s));
                 uniquePaths.push_back(u);
@@ -810,6 +817,7 @@ struct FAUST_API Meta {
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 
 #ifndef FAUSTFLOAT
@@ -1256,7 +1264,6 @@ class FAUST_API Interpolator {
             double operator()(double x) { return (x<fLo) ? fLo : (x>fHi) ? fHi : x; }
         };
 
-
         Range fRange;
         double fCoef;
         double fOffset;
@@ -1416,13 +1423,14 @@ class FAUST_API LinearValueConverter2 : public UpdatableValueConverter {
 class FAUST_API LogValueConverter : public LinearValueConverter {
 
     public:
-
+    
+        // We use DBL_EPSILON which is bigger than DBL_MIN (safer)
         LogValueConverter(double umin, double umax, double fmin, double fmax) :
-            LinearValueConverter(umin, umax, std::log(std::max<double>(DBL_MIN, fmin)), std::log(std::max<double>(DBL_MIN, fmax)))
+            LinearValueConverter(umin, umax, std::log(std::max<double>(DBL_EPSILON, fmin)), std::log(std::max<double>(DBL_EPSILON, fmax)))
         {}
 
         virtual double ui2faust(double x) { return std::exp(LinearValueConverter::ui2faust(x)); }
-        virtual double faust2ui(double x) { return LinearValueConverter::faust2ui(std::log(std::max<double>(x, DBL_MIN))); }
+        virtual double faust2ui(double x) { return LinearValueConverter::faust2ui(std::log(std::max<double>(DBL_EPSILON, x))); }
 
 };
 
@@ -3517,9 +3525,45 @@ static void deleteClist(clist* cl)
  * which are finally created in the JSON(...) method.
  ******************************************************************************/
 
-typedef std::vector<std::tuple<std::string, int, int, int, int, int>> MemoryLayoutType;
+// Instruction complexity statistics
+struct InstComplexity {
+    
+    int fLoad = 0;
+    int fStore = 0;
+    int fBinop = 0;
+    int fMathop = 0;
+    int fNumbers = 0;
+    int fDeclare = 0;
+    int fCast = 0;
+    int fSelect = 0;
+    int fLoop = 0;
+    
+    std::map<std::string, int> fFunctionSymbolTable;
+    std::map<std::string, int> fBinopSymbolTable;
+   
+    InstComplexity operator+(const InstComplexity& icomp)
+    {
+        fLoad += icomp.fLoad;
+        fStore += icomp.fStore;
+        fBinop += icomp.fBinop;
+        fMathop += icomp.fMathop;
+        fNumbers += icomp.fNumbers;
+        fDeclare += icomp.fDeclare;
+        fCast += icomp.fCast;
+        fSelect += icomp.fSelect;
+        fLoop += icomp.fLoop;
+        return *this;
+    }
+};
+
+// DSP or field name, type, size, size-in-bytes, reads, writes
+typedef std::tuple<std::string, std::string, int, int, int, int> MemoryLayoutItem;
+typedef std::vector<MemoryLayoutItem> MemoryLayoutType;
 typedef std::map<std::string, int> PathTableType;
 
+/*
+    Build a JSON description of the DSP.
+ */
 template <typename REAL>
 class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL> {
 
@@ -3541,6 +3585,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
         int fDSPSize;                   // In bytes
         PathTableType fPathTable;
         MemoryLayoutType fMemoryLayout;
+        InstComplexity fIComp;
         bool fExtended;
     
         char fCloseUIPar;
@@ -3608,24 +3653,25 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                   const std::vector<std::string>& include_pathnames,
                   int size,
                   const PathTableType& path_table,
-                  MemoryLayoutType memory_layout)
+                  MemoryLayoutType memory_layout,
+                  InstComplexity inst_comp)
         {
-            init(name, filename, inputs, outputs, sr_index, sha_key, dsp_code, version, compile_options, library_list, include_pathnames, size, path_table, memory_layout);
+            init(name, filename, inputs, outputs, sr_index, sha_key, dsp_code, version, compile_options, library_list, include_pathnames, size, path_table, memory_layout, inst_comp);
         }
 
         JSONUIReal(const std::string& name, const std::string& filename, int inputs, int outputs)
         {
-            init(name, filename, inputs, outputs, -1, "", "", "", "", std::vector<std::string>(), std::vector<std::string>(), -1, PathTableType(), MemoryLayoutType());
+            init(name, filename, inputs, outputs, -1, "", "", "", "", std::vector<std::string>(), std::vector<std::string>(), -1, PathTableType(), MemoryLayoutType(), InstComplexity());
         }
 
         JSONUIReal(int inputs, int outputs)
         {
-            init("", "", inputs, outputs, -1, "", "","", "", std::vector<std::string>(), std::vector<std::string>(), -1, PathTableType(), MemoryLayoutType());
+            init("", "", inputs, outputs, -1, "", "","", "", std::vector<std::string>(), std::vector<std::string>(), -1, PathTableType(), MemoryLayoutType(), InstComplexity());
         }
         
         JSONUIReal()
         {
-            init("", "", -1, -1, -1, "", "", "", "", std::vector<std::string>(), std::vector<std::string>(), -1, PathTableType(), MemoryLayoutType());
+            init("", "", -1, -1, -1, "", "", "", "", std::vector<std::string>(), std::vector<std::string>(), -1, PathTableType(), MemoryLayoutType(), InstComplexity());
         }
  
         virtual ~JSONUIReal() {}
@@ -3650,6 +3696,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                   int size,
                   const PathTableType& path_table,
                   MemoryLayoutType memory_layout,
+                  InstComplexity inst_comp,
                   bool extended = false)
         {
             fTab = 1;
@@ -3658,6 +3705,8 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                 fUI << std::setprecision(std::numeric_limits<REAL>::max_digits10);
                 fMeta << std::setprecision(std::numeric_limits<REAL>::max_digits10);
             }
+        
+            fIComp = inst_comp;
             
             // Start Meta generation
             fMeta.str("");
@@ -3688,7 +3737,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
    
         // -- widget's layouts
     
-        virtual void openGenericGroup(const char* label, const char* name)
+        virtual void openGenericBox(const char* label, const char* name)
         {
             pushLabel(label);
             fUI << fCloseUIPar;
@@ -3704,17 +3753,17 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
 
         virtual void openTabBox(const char* label)
         {
-            openGenericGroup(label, "tgroup");
+            openGenericBox(label, "tgroup");
         }
     
         virtual void openHorizontalBox(const char* label)
         {
-            openGenericGroup(label, "hgroup");
+            openGenericBox(label, "hgroup");
         }
     
         virtual void openVerticalBox(const char* label)
         {
-            openGenericGroup(label, "vgroup");
+            openGenericBox(label, "vgroup");
         }
     
         virtual void closeBox()
@@ -3772,7 +3821,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
             addGenericButton(label, "checkbox");
         }
 
-        virtual void addGenericEntry(const char* label, const char* name, REAL init, REAL min, REAL max, REAL step)
+        virtual void addGenericRange(const char* label, const char* name, REAL init, REAL min, REAL max, REAL step)
         {
             std::string path = buildPath(label);
             fFullPaths.push_back(path);
@@ -3806,17 +3855,17 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
     
         virtual void addVerticalSlider(const char* label, REAL* zone, REAL init, REAL min, REAL max, REAL step)
         {
-            addGenericEntry(label, "vslider", init, min, max, step);
+            addGenericRange(label, "vslider", init, min, max, step);
         }
     
         virtual void addHorizontalSlider(const char* label, REAL* zone, REAL init, REAL min, REAL max, REAL step)
         {
-            addGenericEntry(label, "hslider", init, min, max, step);
+            addGenericRange(label, "hslider", init, min, max, step);
         }
     
         virtual void addNumEntry(const char* label, REAL* zone, REAL init, REAL min, REAL max, REAL step)
         {
-            addGenericEntry(label, "nentry", init, min, max, step);
+            addGenericRange(label, "nentry", init, min, max, step);
         }
 
         // -- passive widgets
@@ -3935,16 +3984,67 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                     tab(fTab, JSON);
                     JSON << "\"memory_layout\": [";
                     for (size_t i = 0; i < fMemoryLayout.size(); i++) {
-                        // DSP or field name, type, size, sizeBytes, reads, writes
-                        std::tuple<std::string, int, int, int, int, int> item = fMemoryLayout[i];
+                        // DSP or field name, type, size, size-in-bytes, reads, writes
+                        MemoryLayoutItem item = fMemoryLayout[i];
                         tab(fTab + 1, JSON);
-                        JSON << "{\"size\": " << std::get<3>(item) << ", ";
-                        JSON << "\"reads\": " << std::get<4>(item) << ", ";
-                        JSON << "\"writes\": " << std::get<5>(item) << "}";
+                        JSON << "{ \"name\": \"" << std::get<0>(item) << "\", ";
+                        JSON << "\"type\": \"" << std::get<1>(item) << "\", ";
+                        JSON << "\"size\": " << std::get<2>(item) << ", ";
+                        JSON << "\"size_bytes\": " << std::get<3>(item) << ", ";
+                        JSON << "\"read\": " << std::get<4>(item) << ", ";
+                        JSON << "\"write\": " << std::get<5>(item) << " }";
                         if (i < (fMemoryLayout.size() - 1)) JSON << ",";
                     }
                     tab(fTab, JSON);
                     JSON << "],";
+                    
+                    // Compute statistics
+                    tab(fTab, JSON);
+                    JSON << "\"compute_cost\": [{";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"load\": " << fIComp.fLoad << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"store\": " << fIComp.fStore << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"declare\": " << fIComp.fDeclare << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"number\": " << fIComp.fNumbers << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"cast\": " << fIComp.fCast << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"select\": " << fIComp.fSelect << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"loop\": " << fIComp.fLoop << ", ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"binop\": [{ ";
+                    JSON << "\"total\": " << fIComp.fBinop;
+                    int size1 = fIComp.fBinopSymbolTable.size();
+                    if (size1 > 0) {
+                        JSON << ", ";
+                        for (const auto& it : fIComp.fBinopSymbolTable) {
+                            JSON << "\"" << it.first << "\": " << it.second;
+                            JSON << ((--size1 == 0) ? " }" : ", ");
+                        }
+                    } else {
+                        JSON << " }";
+                    }
+                    JSON << "], ";
+                    tab(fTab + 1, JSON);
+                    JSON << "\"mathop\": [{ ";
+                    JSON << "\"total\": " << fIComp.fMathop;
+                    int size2 = fIComp.fFunctionSymbolTable.size();
+                    if (size2 > 0) {
+                        JSON << ", ";
+                        for (const auto& it : fIComp.fFunctionSymbolTable) {
+                            JSON << "\"" << it.first << "\": " << it.second;
+                            JSON << ((--size2 == 0) ? " }" : ", ");
+                        }
+                    } else {
+                        JSON << " }";
+                    }
+                    JSON << "]";
+                    tab(fTab, JSON);
+                    JSON << "}],";
                 }
                 if (fDSPSize != -1) { tab(fTab, JSON); JSON << "\"size\": " << fDSPSize << ","; }
                 if (fSHAKey != "") { tab(fTab, JSON); JSON << "\"sha_key\": \"" << fSHAKey << "\","; }
@@ -4001,14 +4101,16 @@ struct FAUST_API JSONUI : public JSONUIReal<FAUSTFLOAT>, public UI {
            const std::vector<std::string>& include_pathnames,
            int size,
            const PathTableType& path_table,
-           MemoryLayoutType memory_layout):
+           MemoryLayoutType memory_layout,
+           InstComplexity inst_comp):
     JSONUIReal<FAUSTFLOAT>(name, filename,
                           inputs, outputs,
                           sr_index,
                           sha_key, dsp_code,
                           version, compile_options,
                           library_list, include_pathnames,
-                          size, path_table, memory_layout)
+                          size, path_table,
+                          memory_layout, inst_comp)
     {}
     
     JSONUI(const std::string& name, const std::string& filename, int inputs, int outputs):
@@ -4567,6 +4669,8 @@ class midi_handler : public midi, public midi_interface {
   
 };
 
+#define ucast(v) static_cast<unsigned char>(v)
+
 #endif // __midi__
 /**************************  END  midi.h **************************/
 
@@ -4876,13 +4980,14 @@ class uiMidiChanPress : public uiMidiTimedItem, public uiConverter {
         {
             FAUSTFLOAT v = *fZone;
             fCache = v;
+            int conv = std::round(fConverter->faust2ui(v));
             if (fChan == 0) {
                 // Send on [0..15] channels on the MIDI layer
                 for (int chan = 0; chan < 16; chan++) {
-                    fMidiOut->chanPress(chan, fConverter->faust2ui(v));
+                    fMidiOut->chanPress(chan, conv);
                 }
             } else {
-                fMidiOut->chanPress(fChan - 1, fConverter->faust2ui(v));
+                fMidiOut->chanPress(fChan - 1, conv);
             }
         }
     
@@ -4928,13 +5033,14 @@ class uiMidiCtrlChange : public uiMidiTimedItem, public uiConverter {
         {
             FAUSTFLOAT v = *fZone;
             fCache = v;
+            int conv = std::round(fConverter->faust2ui(v));
             if (fChan == 0) {
                 // Send on [0..15] channels on the MIDI layer
                 for (int chan = 0; chan < 16; chan++) {
-                    fMidiOut->ctrlChange(chan, fCtrl, fConverter->faust2ui(v));
+                    fMidiOut->ctrlChange(chan, fCtrl, conv);
                 }
             } else {
-                fMidiOut->ctrlChange(fChan - 1, fCtrl, fConverter->faust2ui(v));
+                fMidiOut->ctrlChange(fChan - 1, fCtrl, conv);
             }
         }
         
@@ -4953,6 +5059,7 @@ class uiMidiCtrlChange : public uiMidiTimedItem, public uiConverter {
         }
 };
 
+// Use a two segments linear converter
 class uiMidiPitchWheel : public uiMidiTimedItem {
 
     private:
@@ -4981,13 +5088,14 @@ class uiMidiPitchWheel : public uiMidiTimedItem {
         {
             FAUSTFLOAT v = *fZone;
             fCache = v;
+            int conv = std::round(fConverter.faust2ui(v));
             if (fChan == 0) {
                 // Send on [0..15] channels on the MIDI layer
                 for (int chan = 0; chan < 16; chan++) {
-                    fMidiOut->pitchWheel(chan, fConverter.faust2ui(v));
+                    fMidiOut->pitchWheel(chan, conv);
                 }
             } else {
-                fMidiOut->pitchWheel(fChan - 1, fConverter.faust2ui(v));
+                fMidiOut->pitchWheel(fChan - 1, conv);
             }
         }
         
@@ -5039,13 +5147,14 @@ class uiMidiKeyOn : public uiMidiTimedItem, public uiConverter {
         {
             FAUSTFLOAT v = *fZone;
             fCache = v;
+            int conv = std::round(fConverter->faust2ui(v));
             if (fChan == 0) {
                 // Send on [0..15] channels on the MIDI layer
                 for (int chan = 0; chan < 16; chan++) {
-                    fMidiOut->keyOn(chan, fKeyOn, fConverter->faust2ui(v));
+                    fMidiOut->keyOn(chan, fKeyOn, conv);
                 }
             } else {
-                fMidiOut->keyOn(fChan - 1, fKeyOn, fConverter->faust2ui(v));
+                fMidiOut->keyOn(fChan - 1, fKeyOn, conv);
             }
         }
         
@@ -5091,13 +5200,14 @@ class uiMidiKeyOff : public uiMidiTimedItem, public uiConverter {
         {
             FAUSTFLOAT v = *fZone;
             fCache = v;
+            int conv = std::round(fConverter->faust2ui(v));
             if (fChan == 0) {
                 // Send on [0..15] channels on the MIDI layer
                 for (int chan = 0; chan < 16; chan++) {
-                    fMidiOut->keyOn(chan, fKeyOff, fConverter->faust2ui(v));
+                    fMidiOut->keyOff(chan, fKeyOff, conv);
                 }
             } else {
-                fMidiOut->keyOn(fChan - 1, fKeyOff, fConverter->faust2ui(v));
+                fMidiOut->keyOff(fChan - 1, fKeyOff, conv);
             }
         }
         
@@ -5143,13 +5253,14 @@ class uiMidiKeyPress : public uiMidiTimedItem, public uiConverter {
         {
             FAUSTFLOAT v = *fZone;
             fCache = v;
+            int conv = std::round(fConverter->faust2ui(v));
             if (fChan == 0) {
                 // Send on [0..15] channels on the MIDI layer
                 for (int chan = 0; chan < 16; chan++) {
-                    fMidiOut->keyOn(chan, fKey, fConverter->faust2ui(v));
+                    fMidiOut->keyPress(chan, fKey, conv);
                 }
             } else {
-                fMidiOut->keyOn(fChan - 1, fKey, fConverter->faust2ui(v));
+                fMidiOut->keyPress(fChan - 1, fKey, conv);
             }
         }
         
@@ -6245,9 +6356,9 @@ static dsp* createDSPRecursiver(dsp* dsp1, dsp* dsp2,
 }
 
 static dsp* createDSPCrossfader(dsp* dsp1, dsp* dsp2,
-                                 std::string& error,
-                                 Layout layout = Layout::kTabGroup,
-                                 const std::string& label = "Crossfade")
+                                std::string& error,
+                                Layout layout = Layout::kTabGroup,
+                                const std::string& label = "Crossfade")
 {
     if (dsp1->getNumInputs() != dsp2->getNumInputs()) {
         std::stringstream error_aux;
@@ -7992,6 +8103,9 @@ static void buildManagerGlue(MemoryManagerGlue* glue, dsp_memory_manager* manage
 #ifdef _WIN32
 #include <windows.h>
 #define snprintf _snprintf
+#define STRDUP _strdup
+#else
+#define STRDUP strdup
 #endif
 
 //------------------------------------------------------------------------------------------
@@ -8269,7 +8383,7 @@ struct FAUST_API JSONUIDecoderReal : public JSONUIDecoderBase {
         // MANDATORY: to be sure floats or double are correctly parsed
         char* tmp_local = setlocale(LC_ALL, nullptr);
         if (tmp_local != NULL) {
-            tmp_local = strdup(tmp_local);
+            tmp_local = STRDUP(tmp_local);
         }
         setlocale(LC_ALL, "C");
         
@@ -8350,7 +8464,7 @@ struct FAUST_API JSONUIDecoderReal : public JSONUIDecoderBase {
         // MANDATORY: to be sure floats or double are correctly parsed
         char* tmp_local = setlocale(LC_ALL, nullptr);
         if (tmp_local != NULL) {
-            tmp_local = strdup(tmp_local);
+            tmp_local = STRDUP(tmp_local);
         }
         setlocale(LC_ALL, "C");
         
@@ -8420,7 +8534,7 @@ struct FAUST_API JSONUIDecoderReal : public JSONUIDecoderBase {
         // MANDATORY: to be sure floats or double are correctly parsed
         char* tmp_local = setlocale(LC_ALL, nullptr);
         if (tmp_local != NULL) {
-            tmp_local = strdup(tmp_local);
+            tmp_local = STRDUP(tmp_local);
         }
         setlocale(LC_ALL, "C");
         
@@ -9836,24 +9950,26 @@ class mydsp : public dsp {
  public:
 	
 	FAUSTFLOAT fButton0;
+	int iVec0[2];
 	float fRec0[2];
 	int fSampleRate;
 	
  public:
-	
+	mydsp() {}
+
 	void metadata(Meta* m) { 
-		m->declare("compile_options", "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -es 1 -mcd 16 -uim -single -ftz 0");
+		m->declare("compile_options", "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -uim -single -ftz 0");
 		m->declare("filename", "SyncTester.dsp");
 		m->declare("maths.lib/author", "GRAME");
 		m->declare("maths.lib/copyright", "GRAME");
 		m->declare("maths.lib/license", "LGPL with exception");
 		m->declare("maths.lib/name", "Faust Math Library");
-		m->declare("maths.lib/version", "2.5");
+		m->declare("maths.lib/version", "2.6");
 		m->declare("name", "SyncTester");
 		m->declare("oscillators.lib/lf_sawpos_reset:author", "Bart Brouns, revised by Stéphane Letz");
 		m->declare("oscillators.lib/lf_sawpos_reset:licence", "STK-4.3");
 		m->declare("oscillators.lib/name", "Faust Oscillator Library");
-		m->declare("oscillators.lib/version", "0.3");
+		m->declare("oscillators.lib/version", "0.4");
 		m->declare("platform.lib/name", "Generic Platform Library");
 		m->declare("platform.lib/version", "0.3");
 	}
@@ -9878,7 +9994,10 @@ class mydsp : public dsp {
 	
 	virtual void instanceClear() {
 		for (int l0 = 0; l0 < 2; l0 = l0 + 1) {
-			fRec0[l0] = 0.0f;
+			iVec0[l0] = 0;
+		}
+		for (int l1 = 0; l1 < 2; l1 = l1 + 1) {
+			fRec0[l1] = 0.0f;
 		}
 	}
 	
@@ -9911,10 +10030,12 @@ class mydsp : public dsp {
 		FAUSTFLOAT* output0 = outputs[0];
 		int iSlow0 = int(float(fButton0));
 		for (int i0 = 0; i0 < count; i0 = i0 + 1) {
-			float fTemp0 = ((iSlow0) ? 0.0f : fRec0[1] + 3.0517578e-05f);
-			fRec0[0] = fTemp0 - std::floor(fTemp0);
-			float fTemp1 = float(input0[i0]);
-			output0[i0] = FAUSTFLOAT(((fRec0[0] >= fTemp1) ? fTemp1 + (1.0f - fRec0[0]) : fTemp1 - fRec0[0]));
+			float fTemp0 = float(input0[i0]);
+			iVec0[0] = 1;
+			float fTemp1 = (((1 - iVec0[1]) | iSlow0) ? 0.0f : fRec0[1] + 3.051851e-05f);
+			fRec0[0] = fTemp1 - std::floor(fTemp1);
+			output0[i0] = FAUSTFLOAT(((fRec0[0] >= fTemp0) ? fTemp0 + (1.0f - fRec0[0]) : fTemp0 - fRec0[0]));
+			iVec0[1] = iVec0[0];
 			fRec0[1] = fRec0[0];
 		}
 	}
@@ -9925,7 +10046,7 @@ class mydsp : public dsp {
 	
 	#define FAUST_FILE_NAME "SyncTester.dsp"
 	#define FAUST_CLASS_NAME "mydsp"
-	#define FAUST_COMPILATION_OPIONS "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -es 1 -mcd 16 -uim -single -ftz 0"
+	#define FAUST_COMPILATION_OPIONS "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -uim -single -ftz 0"
 	#define FAUST_INPUTS 1
 	#define FAUST_OUTPUTS 1
 	#define FAUST_ACTIVES 1

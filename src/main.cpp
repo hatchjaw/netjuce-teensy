@@ -3,7 +3,7 @@
 #include <NetJUCEClient.h>
 #include <Utils.h>
 
-IPAddress multicastIP{226, 6, 38, 226};
+IPAddress multicastIP{224, 4, 224, 4};
 IPAddress adapterIP{192, 168, 10, 10};
 uint16_t localPort{DEFAULT_LOCAL_PORT};
 uint16_t remotePort{DEFAULT_REMOTE_PORT}; // Use same port for promiscuous mode; all clients intercommunicate.

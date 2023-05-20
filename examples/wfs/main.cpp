@@ -14,7 +14,7 @@
 #define WAIT_FOR_SERIAL
 #undef WAIT_FOR_SERIAL
 
-IPAddress multicastIP{226, 6, 38, 226};
+IPAddress multicastIP{224, 4, 224, 4};
 IPAddress adapterIP{192, 168, 10, 10};
 
 ProgramContext context;

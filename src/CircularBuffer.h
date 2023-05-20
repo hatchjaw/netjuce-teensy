@@ -19,12 +19,13 @@ public:
     };
 
     enum ReadMode {
-        NORMAL,
-        RESAMPLE
+        NO_RESAMPLE,
+        RESAMPLE_TRUNCATE,
+        RESAMPLE_INTERPOLATE
     };
 
     CircularBuffer(uint8_t numChannels, uint16_t length,
-                   ReadMode readModeToUse = ReadMode::NORMAL,
+                   ReadMode readModeToUse = ReadMode::NO_RESAMPLE,
                    DebugMode debugModeToUse = DebugMode::NONE);
 
     ~CircularBuffer();

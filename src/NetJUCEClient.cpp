@@ -149,7 +149,7 @@ void NetJUCEClient::adjustClock() {
             int denom = 10000;
             int num = C * denom - (div * denom);
 
-            if (abs(num - 2240) > 40) {
+            if (abs(num - 2240) > 50) {
                 Serial.println("Drift ratio outside of acceptable bounds; resetting.");
                 server->second->resetDriftRatio();
             } else {

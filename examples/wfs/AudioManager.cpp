@@ -16,12 +16,16 @@ bool AudioManager::init() {
 //    patchCords.push_back(std::make_unique<AudioConnection>(njc, 0, out, 0));
 //    patchCords.push_back(std::make_unique<AudioConnection>(njc, 1, out, 1));
 
-    patchCords.push_back(std::make_unique<AudioConnection>(wfs, 0, out, 0));
-    patchCords.push_back(std::make_unique<AudioConnection>(wfs, 1, out, 1));
     for (int i = 0; i < context.numSources; ++i) {
+        // Network inputs to WFS inputs.
         patchCords.push_back(std::make_unique<AudioConnection>(njc, i, wfs, i));
+        // Network inputs to network outputs.
         patchCords.push_back(std::make_unique<AudioConnection>(njc, i, njc, i));
     }
+
+    // WFS outputs to I2S outputs.
+    patchCords.push_back(std::make_unique<AudioConnection>(wfs, 0, out, 0));
+    patchCords.push_back(std::make_unique<AudioConnection>(wfs, 1, out, 1));
 
     AudioMemory(32);
     audioShield.enable();
