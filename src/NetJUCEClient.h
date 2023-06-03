@@ -76,6 +76,7 @@ public:
 
 private:
     const uint16_t kReceiveTimeoutMs{5000};
+    const int kExpectedReceiveInterval{int(1000000 * AUDIO_BLOCK_SAMPLES / AUDIO_SAMPLE_RATE)};
 
     /**
      * Operations that occur on the audio ISR.
@@ -118,6 +119,7 @@ private:
     uint16_t remotePort, localPort;
     volatile bool joined{false}, connected{false};
     elapsedMillis receiveTimer{0}, peerCheckTimer{0}, driftCheckTimer{0};
+    elapsedMicros receiveInterval;
     /**
      * Buffer for incoming packets.
      */
@@ -135,8 +137,9 @@ private:
 
     volatile bool packetReady{false};
 
-    float sampleRate{AUDIO_SAMPLE_RATE_EXACT};
-//    SmoothedValue_V2<double> _fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
+    double sampleRate{AUDIO_SAMPLE_RATE_EXACT};
+    SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
+    uint16_t prevSeqNum;
 };
 
 #endif //NETJUCE_NETJUCECLIENT_H

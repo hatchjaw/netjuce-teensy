@@ -160,7 +160,7 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             }
 
             // Visualise the state of the read-write delta.
-            if (debugMode == DebugMode::RW_DELTA_VISUALISER && n % 8 == 0 && debugTimer > 5000) {
+            if (debugMode == DebugMode::RW_DELTA_VISUALISER && (n == 0 || n == len - 1) && debugTimer > 5000) {
                 auto r{static_cast<int>(roundf(100.f * (1.f - (static_cast<float>(rwDelta) / kFloatLength))))};
                 auto temp{visualiser[r]};
                 visualiser[r] = '#';
@@ -242,7 +242,7 @@ float CircularBuffer<T>::getDriftRatio(bool andPrint) {
                       numBlockReads, //blocksReadSinceLastUpdate,
                       driftRatio);
     }
-//    numBlockWrites = 0;
-//    numBlockReads = 0;
+    numBlockWrites = 0;
+    numBlockReads = 0;
     return driftRatio;
 }

@@ -33,25 +33,44 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
     }
 
-//    _fs.onChange = [this](double newSampleRate) {
-//        int sai1PRED = 4;
-//        // This is lifted directly from output_i2s.cpp.
-//        int sai1PODF = 1 + (24000000 * 27) / (newSampleRate * 256 * sai1PRED); // Should evaluate to 15
-//        double C = (newSampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
-//        int div = C;
-//        int denom = 10000;
-//        int num = C * denom - (div * denom);
-//
-//        if (abs(num - 2240) > 1000) {
-//            Serial.println("Drift ratio outside acceptable bounds; resetting.");
-//            server->second->resetDriftRatio();
-//            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
-//        } else {
-//            Serial.printf("Setting sample rate: %.7f", newSampleRate);
-//            Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
-//            set_audioClock(div, num, denom, true);
-//        }
-//    };
+    fs.onChange = [this](double newSampleRate) {
+        // PLL4:
+        // Defaults are: DIV = 28, NUM = 2240, DENOM = 10000
+        // PLL4 MAIN CLOCK = 24000000 * (DIV + NUM/DENOM) = 677.3592 MHz
+        // 677.3592 MHz /4 /15 = 11.2896 MHz = 256 * 44100
+
+        int sai1PRED = 4;
+        // This is lifted directly from output_i2s.cpp.
+        int sai1PODF = 1 + (24000000 * 27) / (newSampleRate * 256 * sai1PRED); // Should evaluate to 15
+        double C = (newSampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
+        int div = C;
+        int denom = 10000;
+        int num = C * denom - (div * denom);
+
+        if (abs(num - 2240) > 1000) {
+            Serial.println("Drift ratio outside acceptable bounds; resetting.");
+            server->second->resetDriftRatio();
+            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
+        } else {
+            // Attempt to decrease the error between the new fraction and the
+            // target sample rate.
+            auto iterations{0};
+            auto error{0.0};
+            auto ddiv{static_cast<double>(div)}, dnum{static_cast<double>(num)};
+            do {
+                error = C - (ddiv + dnum / static_cast<double>(denom));
+                if (error > 0) {
+                    denom--;
+                } else {
+                    denom++;
+                }
+            } while (++iterations < 10 && fabs(error) > 1e-5);
+
+            Serial.printf("Setting sample rate: %.7f", newSampleRate);
+            Serial.printf(" (C %.9f, div %d num %d denom %d)\n", C, div, num, denom);
+            set_audioClock(div, num, denom, true);
+        }
+    };
 }
 
 NetJUCEClient::~NetJUCEClient() {
@@ -110,17 +129,9 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
 }
 
 void NetJUCEClient::update(void) {
-//    receive();
-
-//    checkConnectivity();
-
     doAudioOutput();
 
     handleAudioInput();
-
-//    getAudioAndSend();
-
-//    adjustClock();
 }
 
 void NetJUCEClient::loop() {
@@ -134,56 +145,21 @@ void NetJUCEClient::loop() {
 }
 
 void NetJUCEClient::adjustClock() {
-    // Try to adjust the clock every 30 seconds.
-    if (driftCheckTimer > 30000 && !peers.empty()) {
+    // Try to adjust the clock periodically.
+    if (driftCheckTimer > 10000 && !peers.empty()) {
         driftCheckTimer = 0;
 
-//        // Try to cache the map iterator for the server.
-//        if (server == peers.end()) {
-//            server = peers.find(adapterIP);
-//        }
         // Proceed if the server is found.
         if (server != peers.end()) {
             auto drift = server->second->getDriftRatio(true);
 
-            // PLL4:
-            // Defaults are: DIV = 28, NUM = 2240, DENOM = 10000
-            // PLL4 MAIN CLOCK = 24000000 * (DIV + NUM/DENOM) = 677.3592 MHz
-            // 677.3592 MHz /4 /15 = 11.2896 MHz = 256 * 44100
-            // But this doesn't quite make sense, as it will tend toward a
-            // situation where writes == reads, thus fs = 44100, which it isn't,
-            // at least not relative to the server, which is treated as
-            // authoritative. At best, it's a reactive system; maybe that's
-            // enough for now.
-            //
-            // Also, if a client is disconnected and reconnected before it has
-            // time to recognise that it's not still on the network, reads
-            // continue to accumulate while writes stay static, and an
-            // inaccurate drift ratio results.
-            auto fs = AUDIO_SAMPLE_RATE_EXACT * drift;
-            sampleRate = fs;
-//            sampleRate *= drift;
-//            _fs.set(sampleRate);
-
-            int sai1PRED = 4;
-            // This is lifted directly from output_i2s.cpp.
-            int sai1PODF = 1 + (24000000 * 27) / (sampleRate * 256 * sai1PRED); // Should evaluate to 15
-            double C = ((double) sampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
-            int div = C;
-            int denom = 10000;
-            int num = C * denom - (div * denom);
-
-            if (abs(num - 2240) > 1000) {
-                Serial.println("Drift ratio outside of acceptable bounds; resetting.");
-                server->second->resetDriftRatio();
-            } else {
-                Serial.printf("Setting sample rate: %.7f", sampleRate);
-                Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
-                set_audioClock(div, num, denom, true);
-            }
+            // Update sample rate.
+            sampleRate *= drift;
+            // Maybe trigger clock adjustment
+            fs.set(sampleRate);
         }
     }
-//    _fs.getNext();
+    fs.getNext();
 }
 
 void NetJUCEClient::receive() {
@@ -194,6 +170,13 @@ void NetJUCEClient::receive() {
     while ((packetSize = socket.parsePacket()) > 0) {
         ++receivedCount;
         receiveTimer = 0;
+
+        if (abs(static_cast<int>(receiveInterval) - kExpectedReceiveInterval) > 100) {
+            Serial.print("receive interval ");
+            Serial.print(receiveInterval);
+            Serial.println(" µs");
+        }
+        receiveInterval = 0;
 
         socket.read(packetBuffer, packetSize);
 
@@ -207,7 +190,14 @@ void NetJUCEClient::receive() {
         // There's about to be at least one peer so confirm connectedness.
         auto shouldSetConnected{peers.empty()};
 
+        // Check for packet loss.
         incomingPacket.fromRawPacketData(remoteIP, port, packetBuffer);
+        auto newSeqNum = incomingPacket.getSeqNumber();
+        if ((newSeqNum == 0 && prevSeqNum != UINT16_MAX) || (newSeqNum > 0 && newSeqNum - prevSeqNum != 1)) {
+            Serial.printf("Dropped packet. SeqNum: curr: %d, prev: %d\n", newSeqNum, prevSeqNum);
+        }
+        prevSeqNum = newSeqNum;
+
         auto iter{peers.find(rawIP)};
         // If an unknown peer...
         if (iter == peers.end()) {
@@ -246,13 +236,11 @@ void NetJUCEClient::receive() {
         }
 
         if (shouldSetConnected) {
-            // Set things up so the first clock update will take place after ten
-            // seconds.
-            driftCheckTimer = 20000;
+            driftCheckTimer = 0;
             peerCheckTimer = 0;
             connected = true;
-//            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
-//            fs.set(sampleRate);
+            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
+            fs.set(sampleRate);
         }
     }
 }
