@@ -5,7 +5,6 @@
 #ifndef NETJUCE_TEENSY_PROGRAMCONTEXT_H
 #define NETJUCE_TEENSY_PROGRAMCONTEXT_H
 
-#include <NativeEthernet.h>
 #include <unordered_map>
 #include <SmoothedValue.h>
 #include <functional>

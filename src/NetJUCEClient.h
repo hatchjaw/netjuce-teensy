@@ -3,7 +3,7 @@
 //
 
 #include <Audio.h>
-#include <NativeEthernet.h>
+#include <QNEthernet.h>
 #include <unordered_map>
 #include <memory>
 #include "CircularBuffer.h"
@@ -50,6 +50,8 @@ constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum D
 // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
 // https://en.cppreference.com/w/cpp/container/unordered_map
 using PeerMap = std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>>;
+
+using namespace qindesign::network;
 
 class NetJUCEClient : public AudioStream {
 public:
@@ -99,7 +101,7 @@ private:
 
     void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
 
-    EthernetUDP socket;
+    EthernetUDP socket{64};
     /**
      * MAC address to assign to Teensy's ethernet shield.
      */
@@ -116,14 +118,15 @@ private:
      * IP of the multicast group to join.
      */
     IPAddress multicastIP;
+    IPAddress gatewayIP{192, 168, 10, 1}, netmask{255, 255, 255, 0};
     uint16_t remotePort, localPort;
-    volatile bool joined{false}, connected{false};
+    volatile bool ready{false}, joined{false}, connected{false};
     elapsedMillis receiveTimer{0}, peerCheckTimer{0}, driftCheckTimer{0};
     elapsedMicros receiveInterval;
     /**
      * Buffer for incoming packets.
      */
-    uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
+    uint8_t packetBuffer[EthernetClass::mtu()]{};
     uint64_t receivedCount{0};
 
     PeerMap peers;
@@ -139,7 +142,9 @@ private:
 
     double sampleRate{AUDIO_SAMPLE_RATE_EXACT};
     SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
+
     uint16_t prevSeqNum;
+    int numPacketsDropped{0};
 };
 
 #endif //NETJUCE_NETJUCECLIENT_H
