@@ -56,6 +56,7 @@ private:
     const uint8_t kNumChannels;
     const uint16_t kLength;
     const float kFloatLength;
+    const float kRwDeltaWindow;
     const std::pair<float, float> kRwDeltaThresh;
 
     float getReadWriteDelta();

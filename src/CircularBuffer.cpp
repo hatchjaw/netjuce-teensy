@@ -10,9 +10,11 @@ CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode
         kNumChannels{numChannels},
         kLength{length},
         kFloatLength{static_cast<float>(length)},
-        // TODO: make adjustable; check that first is less than second
-//        kRwDeltaThresh(kFloatLength * .225f, kFloatLength * .475f),
-        kRwDeltaThresh(kFloatLength * .2f, kFloatLength * .5f),
+        kRwDeltaWindow(2.f/3.f),
+        kRwDeltaThresh(
+                kFloatLength * (.5f - (kRwDeltaWindow / 2.f)),
+                kFloatLength * (.5f + (kRwDeltaWindow / 2.f))
+        ),
         buffer{new T *[numChannels]},
         debugMode{debugModeToUse},
         readMode{readModeToUse} {

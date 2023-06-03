@@ -3,7 +3,6 @@
 //
 
 #include "NetJUCEClient.h"
-#include <TeensyID.h>
 #include <imxrt_hw.h>
 
 NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
@@ -21,13 +20,6 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
         outgoingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
         incomingPacket(NUM_SOURCES, AUDIO_BLOCK_SAMPLES, AUDIO_SAMPLE_RATE_EXACT),
         debugMode(debugModeToUse) {
-
-    teensyMAC(mac);
-
-    // TODO: check whether resulting clientIP is the same as the server.
-    // TODO: also check for collisions between clients... adjust as necessary?...
-    clientIP[2] = mac[4];
-    clientIP[3] = mac[5];
 
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
@@ -84,19 +76,27 @@ NetJUCEClient::~NetJUCEClient() {
 bool NetJUCEClient::begin() {
     Serial.printf("DEBUG MODE: %d\n", debugMode);
 
-    Serial.printf(F("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n"),
+    Ethernet.macAddress(mac);
+    Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n",
                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-    EthernetClass::begin(mac, clientIP);
+    // TODO: check whether resulting clientIP is the same as the server.
+    // TODO: also check for collisions between clients... adjust as necessary?...
+    clientIP[2] = mac[4];
+    clientIP[3] = mac[5];
 
-    if (EthernetClass::linkStatus() != LinkON) {
-        Serial.println("Ethernet link could not be established.");
-        return false;
-    } else {
-        Serial.print(F("IP: "));
-        Serial.println(EthernetClass::localIP());
-        return true;
-    }
+    Ethernet.onLinkState([this](bool state) {
+        Serial.printf("[Ethernet] Link %s\n", state ? "ON" : "OFF");
+
+        if (state) {
+            Serial.print("IP: ");
+            Serial.println(Ethernet.localIP());
+
+            ready = true;
+        }
+    });
+
+    Ethernet.begin(clientIP, netmask, gatewayIP);
 }
 
 bool NetJUCEClient::isConnected() const {
@@ -106,6 +106,11 @@ bool NetJUCEClient::isConnected() const {
 void NetJUCEClient::connect(uint connectTimeoutMs) {
     if (!active) {
         Serial.println(F("Client is not connected to any Teensy audio objects."));
+
+        return;
+    }
+
+    if (!ready) {
         delay(connectTimeoutMs);
         return;
     }
@@ -167,14 +172,19 @@ void NetJUCEClient::receive() {
 
     int packetSize;
 
-    while ((packetSize = socket.parsePacket()) > 0) {
+    if ((packetSize = socket.parsePacket()) > 0) {
         ++receivedCount;
         receiveTimer = 0;
 
-        if (abs(static_cast<int>(receiveInterval) - kExpectedReceiveInterval) > 100) {
-            Serial.print("receive interval ");
+//        if (abs(static_cast<int>(receiveInterval) - kExpectedReceiveInterval) > .75 * kExpectedReceiveInterval) {
+        if (
+                (receiveInterval > 3 * kExpectedReceiveInterval)
+                ||
+                (receiveInterval < kExpectedReceiveInterval / 3)
+                ) {
+            Serial.print("Receive interval ");
             Serial.print(receiveInterval);
-            Serial.println(" µs");
+            Serial.printf(" µs (dropped packets: %d)\n", numPacketsDropped);
         }
         receiveInterval = 0;
 
@@ -190,13 +200,18 @@ void NetJUCEClient::receive() {
         // There's about to be at least one peer so confirm connectedness.
         auto shouldSetConnected{peers.empty()};
 
-        // Check for packet loss.
         incomingPacket.fromRawPacketData(remoteIP, port, packetBuffer);
+
+        // Check for packet loss. (NB. this is nonsense for multiple peers)
         auto newSeqNum = incomingPacket.getSeqNumber();
-        if ((newSeqNum == 0 && prevSeqNum != UINT16_MAX) || (newSeqNum > 0 && newSeqNum - prevSeqNum != 1)) {
+        if (!shouldSetConnected && (
+                (newSeqNum == 0 && prevSeqNum != UINT16_MAX) || (newSeqNum > 0 && newSeqNum - prevSeqNum != 1)
+        )) {
             Serial.printf("Dropped packet. SeqNum: curr: %d, prev: %d\n", newSeqNum, prevSeqNum);
+            numPacketsDropped++;
         }
         prevSeqNum = newSeqNum;
+
 
         auto iter{peers.find(rawIP)};
         // If an unknown peer...

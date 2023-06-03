@@ -40,7 +40,7 @@ void setup() {
 
     AudioMemory(32);
     audioShield.enable();
-    audioShield.volume(.4);
+    audioShield.volume(.6);
 
     if (!client.begin()) {
         WAIT_INFINITE();
