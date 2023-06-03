@@ -32,6 +32,26 @@ NetJUCEClient::NetJUCEClient(IPAddress &networkAdapterIPAddress,
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
     }
+
+//    _fs.onChange = [this](double newSampleRate) {
+//        int sai1PRED = 4;
+//        // This is lifted directly from output_i2s.cpp.
+//        int sai1PODF = 1 + (24000000 * 27) / (newSampleRate * 256 * sai1PRED); // Should evaluate to 15
+//        double C = (newSampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
+//        int div = C;
+//        int denom = 10000;
+//        int num = C * denom - (div * denom);
+//
+//        if (abs(num - 2240) > 1000) {
+//            Serial.println("Drift ratio outside acceptable bounds; resetting.");
+//            server->second->resetDriftRatio();
+//            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
+//        } else {
+//            Serial.printf("Setting sample rate: %.7f", newSampleRate);
+//            Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
+//            set_audioClock(div, num, denom, true);
+//        }
+//    };
 }
 
 NetJUCEClient::~NetJUCEClient() {
@@ -141,24 +161,29 @@ void NetJUCEClient::adjustClock() {
             // continue to accumulate while writes stay static, and an
             // inaccurate drift ratio results.
             auto fs = AUDIO_SAMPLE_RATE_EXACT * drift;
+            sampleRate = fs;
+//            sampleRate *= drift;
+//            _fs.set(sampleRate);
+
             int sai1PRED = 4;
             // This is lifted directly from output_i2s.cpp.
-            int sai1PODF = 1 + (24000000 * 27) / (fs * 256 * sai1PRED); // Should evaluate to 15
-            double C = ((double) fs * 256 * sai1PRED * sai1PODF) / 24000000;
+            int sai1PODF = 1 + (24000000 * 27) / (sampleRate * 256 * sai1PRED); // Should evaluate to 15
+            double C = ((double) sampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
             int div = C;
             int denom = 10000;
             int num = C * denom - (div * denom);
 
-            if (abs(num - 2240) > 50) {
+            if (abs(num - 2240) > 1000) {
                 Serial.println("Drift ratio outside of acceptable bounds; resetting.");
                 server->second->resetDriftRatio();
             } else {
-                Serial.printf("Setting sample rate: %.7f", fs);
+                Serial.printf("Setting sample rate: %.7f", sampleRate);
                 Serial.printf(" (C %.9f, div %d num %d denom %d)\n\n", C, div, num, denom);
                 set_audioClock(div, num, denom, true);
             }
         }
     }
+//    _fs.getNext();
 }
 
 void NetJUCEClient::receive() {
@@ -226,6 +251,8 @@ void NetJUCEClient::receive() {
             driftCheckTimer = 20000;
             peerCheckTimer = 0;
             connected = true;
+//            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
+//            fs.set(sampleRate);
         }
     }
 }

@@ -23,7 +23,7 @@
 #endif
 
 #ifndef MULTICAST_IP
-#define MULTICAST_IP "226.6.38.226"
+#define MULTICAST_IP "224.4.224.4"
 #endif
 
 #ifndef DEFAULT_REMOTE_PORT
@@ -134,6 +134,9 @@ private:
     DebugMode debugMode;
 
     volatile bool packetReady{false};
+
+    float sampleRate{AUDIO_SAMPLE_RATE_EXACT};
+//    SmoothedValue_V2<double> _fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
 };
 
 #endif //NETJUCE_NETJUCECLIENT_H

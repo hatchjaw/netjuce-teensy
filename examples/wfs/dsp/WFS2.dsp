@@ -8,9 +8,9 @@ import("WFS_Params_2.lib");
 distanceSim(distance) = *(dGain) : fi.lowpass(2, fc)
 with{
     // Use inverse square law; I_2/I_1 = (d_1/d_2)^2
-    // Assume sensible listening distance of 5 m from array.
+    // Assume sensible listening distance of 2 m from array.
     i1 = 1.; // Intensity 1...
-    d1 = 5.; // ...at distance 5 m
+    d1 = 2.; // ...at distance 2 m
     d2 = d1 + distance;
     i2 = i1 * (d1/d2)^2; //
     dGain = i2;
