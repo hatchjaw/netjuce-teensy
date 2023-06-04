@@ -179,8 +179,8 @@ void NetJUCEClient::receive() {
 //        if (abs(static_cast<int>(receiveInterval) - kExpectedReceiveInterval) > .75 * kExpectedReceiveInterval) {
         if (
                 (receiveInterval > 3 * kExpectedReceiveInterval)
-                ||
-                (receiveInterval < kExpectedReceiveInterval / 3)
+//                ||
+//                (receiveInterval < kExpectedReceiveInterval / 3)
                 ) {
             Serial.print("Receive interval ");
             Serial.print(receiveInterval);
