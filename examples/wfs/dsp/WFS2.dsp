@@ -33,7 +33,9 @@ with{
 
     // y (front-to-back) is always just y, the longitudinal
     // distance of the source from the array.
-    // Get x between the source and specific speaker in the array
+    // Get x between the source and specific speaker in the array, i.e. the
+    // cathetus on the x-axis of the right triangle described by y and the
+    // speaker position.
     // E.g. for 16 speakers (8 modules), with a spacing, s, of .25 m,
     //      array width, w = (16-1)*.25 = 3.75,
     //        let module m = 2 (third module in array)

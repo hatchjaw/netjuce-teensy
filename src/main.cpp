@@ -1,23 +1,25 @@
 #include <Audio.h>
-#include <AudioStream.h>
 #include <NetJUCEClient.h>
 #include <Utils.h>
+#include <ClientSettings.h>
 
 // Wait for a serial connection before proceeding with execution
-#define WAIT_FOR_SERIAL
-#undef WAIT_FOR_SERIAL
+//#define WAIT_FOR_SERIAL
+//#undef WAIT_FOR_SERIAL
 
-IPAddress multicastIP{224, 4, 224, 4};
-IPAddress adapterIP{192, 168, 10, 10};
-uint16_t localPort{DEFAULT_LOCAL_PORT};
-uint16_t remotePort{DEFAULT_REMOTE_PORT}; // Use same port for promiscuous mode; all clients intercommunicate.
+ClientSettings settings{
+        {192, 168, 10, 10},
+        {224, 4, 224, 4},
+        DEFAULT_LOCAL_PORT,
+        DEFAULT_REMOTE_PORT,
+        RESAMPLING_MODE
+};
 
 //AudioOutputUSB usb;
 AudioControlSGTL5000 audioShield;
 
 AudioOutputI2S out;
-NetJUCEClient client{adapterIP, multicastIP, remotePort, localPort,
-                     DebugMode::NONE};
+NetJUCEClient client{settings};
 
 AudioConnection patchCord1(client, 0, out, 0);
 AudioConnection patchCord2(client, 1, out, 1);
@@ -31,7 +33,6 @@ void setup() {
 #ifdef WAIT_FOR_SERIAL
     while (!Serial);
 #endif
-
 
     if (CrashReport) {  // Print any crash report
         Serial.println(CrashReport);

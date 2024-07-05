@@ -5,9 +5,11 @@
 #ifndef NETJUCE_TEENSY_PROGRAMCONTEXT_H
 #define NETJUCE_TEENSY_PROGRAMCONTEXT_H
 
+#include <string>
 #include <unordered_map>
 #include <SmoothedValue.h>
 #include <functional>
+#include <ClientSettings.h>
 
 template<typename T>
 struct Listenable {
@@ -34,13 +36,9 @@ private:
 using SourcePositionsMap = std::unordered_map<std::string, SmoothedValue_V2<double>>;
 
 struct ProgramContext {
-    IPAddress serverIP;
-    IPAddress multicastIP;
-    IPAddress oscMulticastIP;
-    uint16_t audioPort;
+    ClientSettings clientSettings;
+    bool ethernetReady;
     uint16_t oscPort;
-    uint16_t localPort;
-    uint16_t remotePort;
     int numSources;
     Listenable<int> moduleID;
     Listenable<float> speakerSpacing;

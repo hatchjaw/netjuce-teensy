@@ -27,25 +27,16 @@
 #endif
 
 #ifndef DEFAULT_REMOTE_PORT
-#define DEFAULT_REMOTE_PORT 41814
+#define DEFAULT_REMOTE_PORT 6664
 #endif
 
 #ifndef DEFAULT_LOCAL_PORT
-#define DEFAULT_LOCAL_PORT 14841
+#define DEFAULT_LOCAL_PORT 6664
 #endif
 
-enum class DebugMode : uint32_t
-{
-    NONE = 0,
-    HEXDUMP_RECEIVE = 1 << 0,
-    HEXDUMP_SEND = 1 << 1,
-    HEXDUMP_AUDIO_OUT = 1 << 2
-};
-
-constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum DebugMode inValue )
-{
-    return (enum DebugMode)(uint32_t(selfValue) | uint32_t(inValue));
-}
+#ifndef RESAMPLING_MODE
+#define RESAMPLING_MODE INTERPOLATE
+#endif
 
 // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
 // https://en.cppreference.com/w/cpp/container/unordered_map
@@ -55,11 +46,7 @@ using namespace qindesign::network;
 
 class NetJUCEClient : public AudioStream {
 public:
-    NetJUCEClient(IPAddress &networkAdapterIPAddress,
-                  IPAddress &multicastIPAddress,
-                  uint16_t remotePortNumber = DEFAULT_REMOTE_PORT,
-                  uint16_t localPortNumber = DEFAULT_LOCAL_PORT,
-                  DebugMode debugModeToUse = DebugMode::NONE);
+    NetJUCEClient(const ClientSettings &settings);
 
     virtual ~NetJUCEClient();
 
@@ -68,8 +55,6 @@ public:
     bool isConnected() const;
 
     void connect(uint connectTimeoutMs = 1000);
-
-    void setDebugMode(DebugMode mode);
 
     /**
      * Operations that occur on the loop ISR.
@@ -99,27 +84,20 @@ private:
 
     void send();
 
-    void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
+    static void hexDump(const uint8_t *buffer, int length, bool doHeader = false);
 
-    EthernetUDP socket{64};
+    const ClientSettings &settings;
+
+    EthernetUDP socket{4};
     /**
      * MAC address to assign to Teensy's ethernet shield.
      */
     byte mac[6]{};
     /**
-     * IP address of the server.
-     */
-    IPAddress adapterIP;
-    /**
      * IP to assign to Teensy.
      */
     IPAddress clientIP;
-    /**
-     * IP of the multicast group to join.
-     */
-    IPAddress multicastIP;
     IPAddress gatewayIP{192, 168, 10, 1}, netmask{255, 255, 255, 0};
-    uint16_t remotePort, localPort;
     volatile bool ready{false}, joined{false}, connected{false};
     elapsedMillis receiveTimer{0}, peerCheckTimer{0}, driftCheckTimer{0};
     elapsedMicros receiveInterval;
@@ -136,14 +114,12 @@ private:
 
     DatagramAudioPacket outgoingPacket, incomingPacket;
 
-    DebugMode debugMode;
-
     volatile bool packetReady{false};
 
     double sampleRate{AUDIO_SAMPLE_RATE_EXACT};
     SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
 
-    uint16_t prevSeqNum;
+    uint16_t prevSeqNum{0};
     int numPacketsDropped{0};
 };
 

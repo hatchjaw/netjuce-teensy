@@ -6,7 +6,7 @@
 
 AudioManager::AudioManager(ProgramContext &c) :
         Component(c),
-        njc(c.serverIP, c.multicastIP, c.remotePort, c.localPort, DebugMode::NONE) {}
+        njc(c.clientSettings) {}
 
 size_t AudioManager::printTo(Print &p) const {
     return p.print("AudioManager");

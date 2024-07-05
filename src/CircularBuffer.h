@@ -5,28 +5,19 @@
 #ifndef NETJUCE_TEENSY_CIRCULARBUFFER_H
 #define NETJUCE_TEENSY_CIRCULARBUFFER_H
 
-#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 8)
+#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 16)
+//#define CIRCULAR_BUFFER_SIZE 1000
 
 #include <Arduino.h>
+#include "ClientSettings.h"
 #include "SmoothedValue.h"
 
 template<typename T>
 class CircularBuffer {
 public:
-    enum DebugMode {
-        NONE,
-        RW_DELTA_VISUALISER,
-    };
-
-    enum ReadMode {
-        NO_RESAMPLE = 0,
-        RESAMPLE_TRUNCATE,
-        RESAMPLE_INTERPOLATE
-    };
-
-    CircularBuffer(uint8_t numChannels, uint16_t length,
-                   ReadMode readModeToUse = ReadMode::NO_RESAMPLE,
-                   DebugMode debugModeToUse = DebugMode::NONE);
+    CircularBuffer(uint8_t numChannels,
+                   uint16_t length,
+                   const ClientSettings &settings);
 
     ~CircularBuffer();
 
@@ -70,7 +61,7 @@ private:
     T **buffer;
     uint16_t writeIndex{0}, readIndex{0};
     float readPos{0.f};
-    SmoothedValue_V2<double> readPosIncrement{1., .5f};
+    SmoothedValue_V2<double> readPosIncrement{1., .95f};
     uint64_t numBlockReads{0}, numBlockWrites{0}, numSampleWrites{0}, numSampleReads{0};
     uint32_t blocksReadSinceLastUpdate{0}, blocksWrittenSinceLastUpdate{0};
     float driftRatio{1.f};
@@ -80,8 +71,8 @@ private:
     elapsedMillis statTimer{0};
     elapsedMillis debugTimer{5000};
     char visualiser[VISUALISER_LENGTH + 1]{};
-    DebugMode debugMode;
-    ReadMode readMode;
+    BufferDebugMode debugMode;
+    ResamplingMode resamplingMode;
 };
 
 template

@@ -5,19 +5,20 @@
 #include "CircularBuffer.h"
 
 template<typename T>
-CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode readModeToUse,
-                                  DebugMode debugModeToUse) :
+CircularBuffer<T>::CircularBuffer(uint8_t numChannels,
+                                  uint16_t length,
+                                  const ClientSettings &settings) :
         kNumChannels{numChannels},
         kLength{length},
         kFloatLength{static_cast<float>(length)},
-        kRwDeltaWindow(2.f/3.f),
+        kRwDeltaWindow(1.f/3.f),
         kRwDeltaThresh(
                 kFloatLength * (.5f - (kRwDeltaWindow / 2.f)),
                 kFloatLength * (.5f + (kRwDeltaWindow / 2.f))
         ),
         buffer{new T *[numChannels]},
-        debugMode{debugModeToUse},
-        readMode{readModeToUse} {
+        debugMode{settings.bufferDebugMode},
+        resamplingMode{settings.resamplingMode} {
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
         buffer[ch] = new T[kLength];
@@ -25,7 +26,7 @@ CircularBuffer<T>::CircularBuffer(uint8_t numChannels, uint16_t length, ReadMode
 
     clear();
 
-    if (debugMode == DebugMode::RW_DELTA_VISUALISER) {
+    if (debugMode == RW_DELTA_VISUALISER) {
         // Set up the rw-delta visualiser.
         memset(visualiser, '-', VISUALISER_LENGTH);
         auto normLoThresh = static_cast<int>(roundf(100.f * (1.f - (kRwDeltaThresh.first / kFloatLength))));
@@ -46,8 +47,7 @@ CircularBuffer<T>::~CircularBuffer() {
 
 template<typename T>
 void CircularBuffer<T>::clear() {
-    // Why doesn't this work?
-//    memset(buffer[0], 0, kNumChannels * kLength * sizeof(T));
+//    memset(*buffer, 0, kNumChannels * kLength * sizeof(T));
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
         memset(buffer[ch], 0, kLength * sizeof(T));
@@ -89,7 +89,7 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
 
 template<typename T>
 void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
-    if (readMode >= RESAMPLE_TRUNCATE) {
+    if (resamplingMode >= TRUNCATE) {
 //        setReadPosIncrement();
         auto initialReadPos{readPos};
 
@@ -103,7 +103,7 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             // For each channel, get the next sample, interpolated (or
             // truncated) around readPos.
             for (int ch{0}; ch < kNumChannels; ++ch) {
-                bufferToFill[ch][n] = readMode == RESAMPLE_INTERPOLATE ?
+                bufferToFill[ch][n] = resamplingMode == INTERPOLATE ?
                                       interpolateCubic(buffer[ch], readPosInt, alpha) :
                                       buffer[ch][readPosInt];
             }
@@ -125,11 +125,11 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             readPos += increment;
 
             // Visualise the state of the read-write delta.
-            if (debugMode == DebugMode::RW_DELTA_VISUALISER && (n == 0 || n == len - 1) && debugTimer > 5000) {
+            if (debugMode == RW_DELTA_VISUALISER && (n == 0 || n == len - 1) && debugTimer > 5000) {
                 auto r{static_cast<int>(roundf(100.f * (1.f - (rwDelta / kFloatLength))))};
                 auto temp{visualiser[r]};
                 visualiser[r] = '#';
-                Serial.printf("%s %3f (+%.8f)\n", visualiser, rwDelta, increment);
+                Serial.printf("%d %s %3f (+%.8f)\n", kLength, visualiser, rwDelta, increment);
                 visualiser[r] = temp;
             }
         }
@@ -162,11 +162,11 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             }
 
             // Visualise the state of the read-write delta.
-            if (debugMode == DebugMode::RW_DELTA_VISUALISER && (n == 0 || n == len - 1) && debugTimer > 5000) {
+            if (debugMode == RW_DELTA_VISUALISER && (/*n == 0 ||*/ n == len - 1) && debugTimer > 5000) {
                 auto r{static_cast<int>(roundf(100.f * (1.f - (static_cast<float>(rwDelta) / kFloatLength))))};
                 auto temp{visualiser[r]};
                 visualiser[r] = '#';
-                Serial.printf("%s %d (+%.8f)\n", visualiser, rwDelta, 1.f);
+                Serial.printf("%d %s %d (+%.8f)\n", kLength, visualiser, rwDelta, 1.f);
                 visualiser[r] = temp;
             }
         }
