@@ -5,8 +5,10 @@
 #ifndef NETJUCE_TEENSY_ETHERNETMANAGER_H
 #define NETJUCE_TEENSY_ETHERNETMANAGER_H
 
+#include <QNEthernet.h>
 #include "Component.h"
-#include <TeensyID.h>
+
+using namespace qindesign::network;
 
 class EthernetManager : public Component {
 public:
@@ -27,6 +29,7 @@ private:
      * IP to assign to Teensy.
      */
     IPAddress localIP;
+    IPAddress gatewayIP{192, 168, 10, 1}, netmask{255, 255, 255, 0};
 };
 
 

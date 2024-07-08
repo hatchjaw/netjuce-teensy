@@ -4,20 +4,21 @@
 #include "SyncTester/SyncTester.h"
 
 // Wait for a serial connection before proceeding with execution
-#define WAIT_FOR_SERIAL
-#undef WAIT_FOR_SERIAL
+//#define WAIT_FOR_SERIAL
+//#undef WAIT_FOR_SERIAL
 
-// Local udp port on which to receive packets.
-const uint16_t kLocalUdpPort = 8888;
-// Remote server IP address -- should match address in IPv4 settings.
-IPAddress multicastIP{224, 4, 224, 4};
-IPAddress adapterIP{192, 168, 10, 10};
+ClientSettings settings{
+        // Remote server IP address -- should match address in IPv4 settings.
+        {192, 168, 10, 10},
+        // Multicast group IP address.
+        {224, 4, 224, 4}
+};
 
 // Audio shield driver
 AudioControlSGTL5000 audioShield;
 AudioOutputI2S out;
 
-NetJUCEClient client{adapterIP, multicastIP};
+NetJUCEClient client{settings};
 SyncTester st;
 
 // Send input from server back to server.
@@ -26,7 +27,7 @@ AudioConnection patchCord10(client, 0, client, 0);
 AudioConnection patchCord20(client, 0, out, 0);
 // Send input to synchronicity tester.
 AudioConnection patchCord30(client, 0, st, 0);
-// Combine with generated sawtooth.
+// Combine with generated sawtooth and send to output.
 AudioConnection patchCord40(st, 0, out, 1);
 // Send synchronicity measure back to server.
 AudioConnection patchCord50(st, 0, client, 1);
@@ -58,8 +59,6 @@ void setup() {
         Serial.println("Failed to initialise client.");
         WAIT_INFINITE();
     }
-
-//    client.setDebugMode(DebugMode::HEXDUMP_SEND);
 }
 
 void loop() {
@@ -68,7 +67,7 @@ void loop() {
     } else {
         client.loop();
 
-        if (performanceReport > PERF_REPORT_INTERVAL) {
+        if (REPORT_USAGE && performanceReport > PERF_REPORT_INTERVAL) {
             Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
                           AudioMemoryUsage(),
                           AudioProcessorUsage());

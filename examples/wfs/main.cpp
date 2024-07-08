@@ -11,8 +11,8 @@
 #include "EthernetManager.h"
 #include "OscReceiver.h"
 
-#define WAIT_FOR_SERIAL
-#undef WAIT_FOR_SERIAL
+//#define WAIT_FOR_SERIAL
+//#undef WAIT_FOR_SERIAL
 
 IPAddress multicastIP{224, 4, 224, 4};
 IPAddress adapterIP{192, 168, 10, 10};
@@ -32,19 +32,21 @@ void setup() {
         CrashReport.clear();
     }
 
-    context.multicastIP = multicastIP;
-    context.serverIP = adapterIP;
-    context.remotePort = DEFAULT_REMOTE_PORT;
-    context.localPort = DEFAULT_LOCAL_PORT;
-    context.audioPort = DEFAULT_LOCAL_PORT;
-    context.oscPort = DEFAULT_LOCAL_PORT + 1;
+    context.clientSettings = {
+            adapterIP,
+            multicastIP
+    };
+    context.ethernetReady = false;
+    context.oscPort = DEFAULT_LOCAL_PORT - 1;
     context.moduleID = 0;
     context.numSources = NUM_SOURCES;
 
+    Serial.println(context.clientSettings);
+
     components.push_back(std::make_unique<ContextManager>(context));
     components.push_back(std::make_unique<EthernetManager>(context));
-    components.push_back(std::make_unique<AudioManager>(context));
     components.push_back(std::make_unique<OscReceiver>(context));
+    components.push_back(std::make_unique<AudioManager>(context));
 
     for (auto &c: components) {
         if (!c->begin()) {

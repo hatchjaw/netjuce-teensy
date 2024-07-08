@@ -6,7 +6,8 @@
 #define NETJUCE_TEENSY_NETAUDIOPEER_H
 
 #include <Audio.h>
-#include <NativeEthernet.h>
+#include <QNEthernet.h>
+#include "ClientSettings.h"
 #include "CircularBuffer.h"
 #include "DatagramAudioPacket.h"
 #include <memory>
@@ -15,7 +16,7 @@ using CB16 = CircularBuffer<int16_t>;
 
 class NetAudioPeer {
 public:
-    NetAudioPeer(DatagramAudioPacket &firstPacket);
+    NetAudioPeer(DatagramAudioPacket &firstPacket, const ClientSettings &settings);
 
     void handlePacket(DatagramAudioPacket &p);
 
@@ -33,6 +34,7 @@ private:
     DatagramAudioPacket::Origin origin;
     elapsedMillis receiveTimer;
     std::unique_ptr<CircularBuffer<int16_t>> audioBuffer;
+    uint16_t prevSeqNum;
 };
 
 

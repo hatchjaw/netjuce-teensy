@@ -3,9 +3,10 @@
 //
 
 #include <Audio.h>
-#include <NativeEthernet.h>
+#include <QNEthernet.h>
 #include <unordered_map>
 #include <memory>
+#include "ClientSettings.h"
 #include "CircularBuffer.h"
 #include "DatagramAudioPacket.h"
 #include "NetAudioPeer.h"
@@ -14,60 +15,30 @@
 #ifndef NETJUCE_NETJUCECLIENT_H
 #define NETJUCE_NETJUCECLIENT_H
 
-#ifndef AUDIO_BLOCK_SAMPLES
-#define AUDIO_BLOCK_SAMPLES 128
-#endif
-
-#ifndef NUM_SOURCES
-#define NUM_SOURCES 2
-#endif
-
-#ifndef MULTICAST_IP
-#define MULTICAST_IP "224.4.224.4"
-#endif
-
-#ifndef DEFAULT_REMOTE_PORT
-#define DEFAULT_REMOTE_PORT 41814
-#endif
-
-#ifndef DEFAULT_LOCAL_PORT
-#define DEFAULT_LOCAL_PORT 14841
-#endif
-
-enum class DebugMode : uint32_t
-{
-    NONE = 0,
-    HEXDUMP_RECEIVE = 1 << 0,
-    HEXDUMP_SEND = 1 << 1,
-    HEXDUMP_AUDIO_OUT = 1 << 2
-};
-
-constexpr enum DebugMode operator |(const enum DebugMode selfValue, const enum DebugMode inValue )
-{
-    return (enum DebugMode)(uint32_t(selfValue) | uint32_t(inValue));
-}
-
 // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
 // https://en.cppreference.com/w/cpp/container/unordered_map
 using PeerMap = std::unordered_map<uint32_t, std::unique_ptr<NetAudioPeer>>;
 
+using namespace qindesign::network;
+
 class NetJUCEClient : public AudioStream {
 public:
-    NetJUCEClient(IPAddress &networkAdapterIPAddress,
-                  IPAddress &multicastIPAddress,
-                  uint16_t remotePortNumber = DEFAULT_REMOTE_PORT,
-                  uint16_t localPortNumber = DEFAULT_LOCAL_PORT,
-                  DebugMode debugModeToUse = DebugMode::NONE);
+    NetJUCEClient(const ClientSettings &settings);
 
     virtual ~NetJUCEClient();
 
+    /**
+     * This method sets up ethernet. Arguably (and certainly if using ethernet
+     * for other purposes, e.g. transmitting/receiving OSC messages) this class
+     * should not be responsible for ethernet.
+     * @see ../examples/wfs, where ethernet management is delegated to a
+     * dedicated EthernetManager.
+     */
     bool begin();
 
     bool isConnected() const;
 
     void connect(uint connectTimeoutMs = 1000);
-
-    void setDebugMode(DebugMode mode);
 
     /**
      * Operations that occur on the loop ISR.
@@ -76,6 +47,7 @@ public:
 
 private:
     const uint16_t kReceiveTimeoutMs{5000};
+    const int kExpectedReceiveInterval{int(1000000 * AUDIO_BLOCK_SAMPLES / AUDIO_SAMPLE_RATE)};
 
     /**
      * Operations that occur on the audio ISR.
@@ -96,32 +68,27 @@ private:
 
     void send();
 
-    void hexDump(const uint8_t *buffer, int length, bool doHeader = false) const;
+    static void hexDump(const uint8_t *buffer, int length, bool doHeader = false);
 
-    EthernetUDP socket;
+    const ClientSettings &settings;
+
+    EthernetUDP socket{4};
     /**
      * MAC address to assign to Teensy's ethernet shield.
      */
     byte mac[6]{};
     /**
-     * IP address of the server.
-     */
-    IPAddress adapterIP;
-    /**
      * IP to assign to Teensy.
      */
     IPAddress clientIP;
-    /**
-     * IP of the multicast group to join.
-     */
-    IPAddress multicastIP;
-    uint16_t remotePort, localPort;
-    volatile bool joined{false}, connected{false};
+    IPAddress gatewayIP{192, 168, 10, 1}, netmask{255, 255, 255, 0};
+    volatile bool ready{false}, joined{false}, connected{false};
     elapsedMillis receiveTimer{0}, peerCheckTimer{0}, driftCheckTimer{0};
+    elapsedMicros receiveInterval;
     /**
      * Buffer for incoming packets.
      */
-    uint8_t packetBuffer[FNET_SOCKET_DEFAULT_SIZE]{};
+    uint8_t packetBuffer[EthernetClass::mtu()]{};
     uint64_t receivedCount{0};
 
     PeerMap peers;
@@ -131,12 +98,13 @@ private:
 
     DatagramAudioPacket outgoingPacket, incomingPacket;
 
-    DebugMode debugMode;
-
     volatile bool packetReady{false};
 
-    float sampleRate{AUDIO_SAMPLE_RATE_EXACT};
-//    SmoothedValue_V2<double> _fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
+    double sampleRate{AUDIO_SAMPLE_RATE_EXACT};
+    SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .9, 1e-6};
+
+    uint16_t prevSeqNum{0};
+    int numPacketsDropped{0};
 };
 
 #endif //NETJUCE_NETJUCECLIENT_H

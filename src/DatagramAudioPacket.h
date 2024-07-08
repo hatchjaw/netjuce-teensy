@@ -132,7 +132,7 @@ public:
      */
     void getAudioData(const int16_t **buffer);
 
-    int getSeqNumber() const;
+    uint16_t getSeqNumber() const;
 
     /**
      * Get a pointer to this packet's raw data.

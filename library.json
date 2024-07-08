@@ -1,0 +1,27 @@
+{
+  "name": "NetJUCEClient",
+  "description": "A networked audio client for Teensy 4.1.",
+  "keywords": "networked audio",
+  "authors": [
+    {
+      "name": "Tommy Rushton",
+      "email": "hatchjaw@users.noreply.github.com",
+      "maintainer": true
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hatchjaw/netjuce-teensy"
+  },
+  "dependencies": [
+    {
+      "name": "QNEthernet",
+      "version": "https://github.com/ssilverman/QNEthernet/releases/tag/v0.28.0"
+    }
+  ],
+  "version": "0.0.1",
+  "license": "GPL-3.0",
+  "homepage": "https://github.com/hatchjaw/netjuce-teensy",
+  "frameworks": "arduino",
+  "platforms": "teensy"
+}

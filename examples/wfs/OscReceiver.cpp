@@ -10,14 +10,19 @@ size_t OscReceiver::printTo(Print &p) const {
 }
 
 bool OscReceiver::init() {
-    auto result{1 == udp.beginMulticast(context.multicastIP, context.oscPort)};
+//    while(!context.ethernetReady) {
+//        Serial.println("Waiting for ethernet...");
+//        delay(1000);
+//    }
+
+    auto result{1 == udp.beginMulticast(context.clientSettings.multicastIP, context.oscPort)};
 
     if (!result) {
         sprintf(error, "OscReceiver: Failed to join multicast group.");
     } else {
         Serial.print("OscReceiver: joined multicast group at ");
-        Serial.print(context.multicastIP);
-        Serial.printf(F(", listening on port %d\n"), context.oscPort);
+        Serial.print(context.clientSettings.multicastIP);
+        Serial.printf(", listening on port %d\n", context.oscPort);
     }
 
     return result;
@@ -86,7 +91,7 @@ void OscReceiver::parseModule(OSCMessage &msg, int addrOffset) {
     IPAddress ip;
     msg.getString(0, ipString, 15);
     ip.fromString(ipString);
-    if (ip == EthernetClass::localIP()) {
+    if (ip == Ethernet.localIP()) {
         char id[2];
         msg.getAddress(id, addrOffset + 1);
         auto numericID = strtof(id, nullptr);
