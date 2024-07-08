@@ -11,10 +11,7 @@ ClientSettings settings{
         // Remote server IP address -- should match address in IPv4 settings.
         {192, 168, 10, 10},
         // Multicast group IP address.
-        {224, 4, 224, 4},
-        DEFAULT_LOCAL_PORT,
-        DEFAULT_REMOTE_PORT,
-        RESAMPLING_MODE
+        {224, 4, 224, 4}
 };
 
 // Audio shield driver
@@ -30,7 +27,7 @@ AudioConnection patchCord10(client, 0, client, 0);
 AudioConnection patchCord20(client, 0, out, 0);
 // Send input to synchronicity tester.
 AudioConnection patchCord30(client, 0, st, 0);
-// Combine with generated sawtooth.
+// Combine with generated sawtooth and send to output.
 AudioConnection patchCord40(st, 0, out, 1);
 // Send synchronicity measure back to server.
 AudioConnection patchCord50(st, 0, client, 1);
@@ -70,7 +67,7 @@ void loop() {
     } else {
         client.loop();
 
-        if (performanceReport > PERF_REPORT_INTERVAL) {
+        if (REPORT_USAGE && performanceReport > PERF_REPORT_INTERVAL) {
             Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
                           AudioMemoryUsage(),
                           AudioProcessorUsage());

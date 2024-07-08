@@ -9,10 +9,7 @@
 
 ClientSettings settings{
         {192, 168, 10, 10},
-        {224, 4, 224, 4},
-        DEFAULT_LOCAL_PORT,
-        DEFAULT_REMOTE_PORT,
-        RESAMPLING_MODE
+        {224, 4, 224, 4}
 };
 
 //AudioOutputUSB usb;
@@ -54,8 +51,9 @@ void loop() {
     } else {
         client.loop();
 
-        if (usageReportTimer > USAGE_REPORT_INTERVAL) {
-            Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
+        if (REPORT_USAGE && usageReportTimer > USAGE_REPORT_INTERVAL) {
+            Serial.printf("%sAudio memory in use: %d blocks; processor %f %%\n",
+                          BUFFER_DEBUG_MODE > NO_BUFFER_DEBUG ? "\n" : "",
                           AudioMemoryUsage(),
                           AudioProcessorUsage());
             usageReportTimer = 0;

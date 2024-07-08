@@ -18,56 +18,63 @@ NetJUCEClient::NetJUCEClient(const ClientSettings &settings) :
         audioBlock[ch] = new int16_t[AUDIO_BLOCK_SAMPLES];
     }
 
-    fs.onChange = [this](double newSampleRate) {
-        // PLL4:
-        // Defaults are: DIV = 28, NUM = 2240, DENOM = 10000
-        // PLL4 MAIN CLOCK = 24000000 * (DIV + NUM/DENOM) = 677.376 MHz
-        // 677.376 MHz /4 /15 = 11.2896 MHz = 256 * 44100
+    if (settings.doClockAdjust) {
+        fs.onChange = [this](double newSampleRate)
+        {
+            // PLL4:
+            // Defaults are: DIV = 28, NUM = 2240, DENOM = 10000
+            // PLL4 MAIN CLOCK = 24000000 * (DIV + NUM/DENOM) = 677.376 MHz
+            // 677.376 MHz /4 /15 = 11.2896 MHz = 256 * 44100
 
-        int sai1PRED = 4;
-        // This is lifted directly from output_i2s.cpp.
-        // '27' works for Fs around 44100; wouldn't work for 48000 (would need to be 30)
-        int sai1PODF = 1 + (24000000 * 27) / (newSampleRate * 256 * sai1PRED);
-        double C = (newSampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
-        int div = C;
-        int denom = 10000;
-        int num = C * denom - (div * denom);
+            int sai1PRED = 4;
+            // This is lifted directly from output_i2s.cpp.
+            // '27' works for Fs around 44100; wouldn't work for 48000 (would need to be 30)
+            int sai1PODF = 1 + (24000000 * 27) / (newSampleRate * 256 * sai1PRED);
+            double C = (newSampleRate * 256 * sai1PRED * sai1PODF) / 24000000;
+            int div = C;
+            int denom = 10000;
+            int num = C * denom - (div * denom);
 
-        if (abs(num - 2240) > 1000) {
+//        auto sai1clk = (24'000'000 * (div + num/denom));// / 60;
+//        Serial.printf("Fs = %" PRId32 "\n", sai1clk);
+
+            if (abs(num - 2240) > 1000) {
 //            Serial.println("Drift ratio outside acceptable bounds; resetting.");
-            server->second->resetDriftRatio();
-            sampleRate = AUDIO_SAMPLE_RATE_EXACT;
-            num = 2240;
-            sai1PODF = 15;
-        } else {
-            // Attempt to decrease the error between the new fraction and the
-            // target sample rate.
-            auto iterations{0};
-            auto error{0.0};
-            auto ddiv{static_cast<double>(div)}, dnum{static_cast<double>(num)};
-            do {
-                error = C - (ddiv + dnum / static_cast<double>(denom));
-                if (error > 0) {
-                    denom--;
-                } else {
-                    denom++;
-                }
-            } while (++iterations < 10 && fabs(error) > 1e-5);
-        }
+                server->second->resetDriftRatio();
+                sampleRate = AUDIO_SAMPLE_RATE_EXACT;
+                num = 2240;
+                sai1PODF = 15;
+            } else {
+                // Attempt to decrease the error between the new fraction and the
+                // target sample rate.
+                auto iterations{0};
+                auto error{0.0};
+                auto ddiv{static_cast<double>(div)}, dnum{static_cast<double>(num)};
+                do {
+                    error = C - (ddiv + dnum / static_cast<double>(denom));
+                    if (error > 0) {
+                        denom--;
+                    } else {
+                        denom++;
+                    }
+                } while (++iterations < 10 && fabs(error) > 1e-5);
+            }
 
 //            Serial.printf("Setting sample rate: %.7f", newSampleRate);
 //            Serial.printf(" (SAI1_PODF %d, C %.9f, div %d num %d denom %d)\n", sai1PODF, C, div, num, denom);
-        set_audioClock(div, num, denom, true);
+            set_audioClock(div, num, denom, true);
 
-        CCM_CSCMR1 = (CCM_CSCMR1 & ~(CCM_CSCMR1_SAI1_CLK_SEL_MASK))
-                     | CCM_CSCMR1_SAI1_CLK_SEL(2);
-        CCM_CS1CDR = (CCM_CS1CDR & ~(CCM_CS1CDR_SAI1_CLK_PRED_MASK | CCM_CS1CDR_SAI1_CLK_PODF_MASK))
-                     | CCM_CS1CDR_SAI1_CLK_PRED(sai1PRED-1)
-                     | CCM_CS1CDR_SAI1_CLK_PODF(sai1PODF-1);
-    };
+            CCM_CSCMR1 = (CCM_CSCMR1 & ~(CCM_CSCMR1_SAI1_CLK_SEL_MASK))
+                         | CCM_CSCMR1_SAI1_CLK_SEL(2);
+            CCM_CS1CDR = (CCM_CS1CDR & ~(CCM_CS1CDR_SAI1_CLK_PRED_MASK | CCM_CS1CDR_SAI1_CLK_PODF_MASK))
+                         | CCM_CS1CDR_SAI1_CLK_PRED(sai1PRED - 1)
+                         | CCM_CS1CDR_SAI1_CLK_PODF(sai1PODF - 1);
+        };
+    }
 }
 
-NetJUCEClient::~NetJUCEClient() {
+NetJUCEClient::~NetJUCEClient()
+{
     for (int ch = 0; ch < NUM_SOURCES; ++ch) {
         delete[] audioBlock[ch];
     }
@@ -75,8 +82,9 @@ NetJUCEClient::~NetJUCEClient() {
 }
 
 
-bool NetJUCEClient::begin() {
-    Serial.printf("DEBUG MODE: %d\n", settings.clientDebugMode);
+bool NetJUCEClient::begin()
+{
+    Serial.println(settings);
 
     Ethernet.macAddress(mac);
     Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n",
@@ -87,25 +95,28 @@ bool NetJUCEClient::begin() {
     clientIP[2] = mac[4];
     clientIP[3] = mac[5];
 
-    Ethernet.onLinkState([this](bool state) {
-        Serial.printf("[Ethernet] Link %s\n", state ? "ON" : "OFF");
+    Ethernet.onLinkState([this](bool state)
+                         {
+                             Serial.printf("[Ethernet] Link %s\n", state ? "ON" : "OFF");
 
-        if (state) {
-            Serial.print("IP: ");
-            Serial.println(Ethernet.localIP());
+                             if (state) {
+                                 Serial.print("IP: ");
+                                 Serial.println(Ethernet.localIP());
 
-            ready = true;
-        }
-    });
+                                 ready = true;
+                             }
+                         });
 
     Ethernet.begin(clientIP, netmask, gatewayIP);
 }
 
-bool NetJUCEClient::isConnected() const {
+bool NetJUCEClient::isConnected() const
+{
     return joined;
 }
 
-void NetJUCEClient::connect(uint connectTimeoutMs) {
+void NetJUCEClient::connect(uint connectTimeoutMs)
+{
     if (!active) {
         Serial.println(F("Client is not connected to any Teensy audio objects."));
 
@@ -135,25 +146,30 @@ void NetJUCEClient::connect(uint connectTimeoutMs) {
     }
 }
 
-void NetJUCEClient::update(void) {
+void NetJUCEClient::update(void)
+{
     doAudioOutput();
 
     handleAudioInput();
 }
 
-void NetJUCEClient::loop() {
+void NetJUCEClient::loop()
+{
     receive();
 
     checkConnectivity();
 
     send();
 
-//    adjustClock();
+    if (settings.doClockAdjust) {
+        adjustClock();
+    }
 }
 
-void NetJUCEClient::adjustClock() {
+void NetJUCEClient::adjustClock()
+{
     // Try to adjust the clock periodically.
-    if (driftCheckTimer > 30000 && !peers.empty()) {
+    if (driftCheckTimer > 2000 && !peers.empty()) {
         driftCheckTimer = 0;
 
         // Proceed if the server is found.
@@ -170,7 +186,8 @@ void NetJUCEClient::adjustClock() {
     fs.getNext();
 }
 
-void NetJUCEClient::receive() {
+void NetJUCEClient::receive()
+{
     if (!joined) return;
 
     int packetSize;
@@ -236,7 +253,7 @@ void NetJUCEClient::receive() {
         iter->second->handlePacket(incomingPacket);
 
         // TODO: move into Packet or Peer class?
-        if (settings.clientDebugMode >= HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
+        if (settings.transmissionDebugMode >= HEXDUMP_RECEIVE && receivedCount > 0 && receivedCount % 10000 <= 1) {
             Serial.println("Connected peers:");
             for (auto &peer: peers) {
                 Serial.println(IPAddress{peer.first});
@@ -263,7 +280,8 @@ void NetJUCEClient::receive() {
     }
 }
 
-void NetJUCEClient::checkConnectivity() {
+void NetJUCEClient::checkConnectivity()
+{
     if (peerCheckTimer > 1000 && !peers.empty()) {
         peerCheckTimer = 0;
         for (auto it = peers.cbegin(), next = it; it != peers.cend(); it = next) {
@@ -296,7 +314,8 @@ void NetJUCEClient::checkConnectivity() {
     }
 }
 
-void NetJUCEClient::doAudioOutput() {
+void NetJUCEClient::doAudioOutput()
+{
     if (connected) {
 ////        Serial.println("Connected (at least one peer exists).");
 //        // Try to cache the map iterator for the server.
@@ -325,7 +344,7 @@ void NetJUCEClient::doAudioOutput() {
         }
     }
 
-    if (settings.clientDebugMode >= HEXDUMP_AUDIO_OUT && receivedCount > 0 && receivedCount % 10000 <= 1) {
+    if (settings.transmissionDebugMode >= HEXDUMP_AUDIO_OUT && receivedCount > 0 && receivedCount % 10000 <= 1) {
         Serial.println(F("Audio out, channel 1"));
         hexDump(reinterpret_cast<uint8_t *>(audioBlock[0]), 32);
         Serial.println(F("Audio out, channel 2"));
@@ -348,7 +367,8 @@ void NetJUCEClient::doAudioOutput() {
     }
 }
 
-void NetJUCEClient::handleAudioInput() {
+void NetJUCEClient::handleAudioInput()
+{
     audio_block_t *inBlock[num_inputs];
     for (int channel = 0; channel < num_inputs; channel++) {
         inBlock[channel] = receiveReadOnly(channel);
@@ -366,7 +386,8 @@ void NetJUCEClient::handleAudioInput() {
     packetReady = true;
 }
 
-void NetJUCEClient::getAudioAndSend() {
+void NetJUCEClient::getAudioAndSend()
+{
     if (!joined /*|| !connected*/) return;
 
     // Copy audio to the outgoing packet.
@@ -390,7 +411,7 @@ void NetJUCEClient::getAudioAndSend() {
     socket.write(outgoingPacket.getData(), outgoingPacket.getSize());
     socket.endPacket();
 
-    if (settings.clientDebugMode >= HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
+    if (settings.transmissionDebugMode >= HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
         Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
         Serial.print("Destination: ");
         Serial.print(settings.multicastIP);
@@ -401,7 +422,8 @@ void NetJUCEClient::getAudioAndSend() {
     outgoingPacket.incrementSeqNumber();
 }
 
-void NetJUCEClient::send() {
+void NetJUCEClient::send()
+{
     if (joined && packetReady) {
         packetReady = false;
 
@@ -411,7 +433,7 @@ void NetJUCEClient::send() {
         socket.write(outgoingPacket.getData(), outgoingPacket.getSize());
         socket.endPacket();
 
-        if (settings.clientDebugMode >= HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
+        if (settings.transmissionDebugMode >= HEXDUMP_SEND && outgoingPacket.getSeqNumber() % 10000 <= 1) {
             Serial.printf("SEND: SeqNumber: %d\n", outgoingPacket.getSeqNumber());
             Serial.print("Destination: ");
             Serial.print(settings.multicastIP);
@@ -423,7 +445,8 @@ void NetJUCEClient::send() {
     }
 }
 
-void NetJUCEClient::hexDump(const uint8_t *buffer, int length, bool doHeader) {
+void NetJUCEClient::hexDump(const uint8_t *buffer, int length, bool doHeader)
+{
     int word{doHeader ? 10 : 0}, row{0};
     if (doHeader)Serial.print(F("HEAD:"));
     for (const uint8_t *p = buffer; word < length + (doHeader ? 10 : 0); ++p, ++word) {

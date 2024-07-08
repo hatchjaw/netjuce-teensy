@@ -57,7 +57,7 @@ void AudioManager::loop() {
         njc.loop();
     }
 
-    if (usageReportTimer > USAGE_REPORT_INTERVAL) {
+    if (REPORT_USAGE && usageReportTimer > USAGE_REPORT_INTERVAL) {
         Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
                       AudioMemoryUsage(),
                       AudioProcessorUsage());

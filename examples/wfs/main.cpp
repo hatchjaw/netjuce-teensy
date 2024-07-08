@@ -34,14 +34,14 @@ void setup() {
 
     context.clientSettings = {
             adapterIP,
-            multicastIP,
-            DEFAULT_LOCAL_PORT,
-            DEFAULT_REMOTE_PORT
+            multicastIP
     };
     context.ethernetReady = false;
     context.oscPort = DEFAULT_LOCAL_PORT - 1;
     context.moduleID = 0;
     context.numSources = NUM_SOURCES;
+
+    Serial.println(context.clientSettings);
 
     components.push_back(std::make_unique<ContextManager>(context));
     components.push_back(std::make_unique<EthernetManager>(context));

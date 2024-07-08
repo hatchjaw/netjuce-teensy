@@ -6,6 +6,7 @@
 #include <QNEthernet.h>
 #include <unordered_map>
 #include <memory>
+#include "ClientSettings.h"
 #include "CircularBuffer.h"
 #include "DatagramAudioPacket.h"
 #include "NetAudioPeer.h"
@@ -13,30 +14,6 @@
 
 #ifndef NETJUCE_NETJUCECLIENT_H
 #define NETJUCE_NETJUCECLIENT_H
-
-#ifndef AUDIO_BLOCK_SAMPLES
-#define AUDIO_BLOCK_SAMPLES 128
-#endif
-
-#ifndef NUM_SOURCES
-#define NUM_SOURCES 2
-#endif
-
-#ifndef MULTICAST_IP
-#define MULTICAST_IP "224.4.224.4"
-#endif
-
-#ifndef DEFAULT_REMOTE_PORT
-#define DEFAULT_REMOTE_PORT 6664
-#endif
-
-#ifndef DEFAULT_LOCAL_PORT
-#define DEFAULT_LOCAL_PORT 6664
-#endif
-
-#ifndef RESAMPLING_MODE
-#define RESAMPLING_MODE INTERPOLATE
-#endif
 
 // unordered_map performs better ("average constant-time") than map (logarithmic) according to c++ reference
 // https://en.cppreference.com/w/cpp/container/unordered_map
@@ -50,6 +27,13 @@ public:
 
     virtual ~NetJUCEClient();
 
+    /**
+     * This method sets up ethernet. Arguably (and certainly if using ethernet
+     * for other purposes, e.g. transmitting/receiving OSC messages) this class
+     * should not be responsible for ethernet.
+     * @see ../examples/wfs, where ethernet management is delegated to a
+     * dedicated EthernetManager.
+     */
     bool begin();
 
     bool isConnected() const;
@@ -117,7 +101,7 @@ private:
     volatile bool packetReady{false};
 
     double sampleRate{AUDIO_SAMPLE_RATE_EXACT};
-    SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-3};
+    SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-6};
 
     uint16_t prevSeqNum{0};
     int numPacketsDropped{0};
