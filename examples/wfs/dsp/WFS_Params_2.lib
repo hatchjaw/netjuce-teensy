@@ -2,7 +2,7 @@
 CELERITY = 343;
 
 // max Y distance, in meters, that a virtual source can be from the speaker array
-MAX_Y_DIST = 10;
+MAX_Y_DIST = 5;
 
 // Number of speakers in the speaker array.
 N_SPEAKERS = 16;

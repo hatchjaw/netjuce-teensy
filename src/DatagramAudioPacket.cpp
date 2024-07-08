@@ -60,7 +60,7 @@ void DatagramAudioPacket::incrementSeqNumber() {
     ++header.SeqNumber;
 }
 
-int DatagramAudioPacket::getSeqNumber() const {
+uint16_t DatagramAudioPacket::getSeqNumber() const {
     return header.SeqNumber;
 }
 

@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------
 name: "SyncTester"
-Code generated with Faust 2.58.13 (https://faust.grame.fr)
-Compilation options: -a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -uim -single -ftz 0
+Code generated with Faust 2.70.1 (https://faust.grame.fr)
+Compilation options: -a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -mdd 1024 -mdy 33 -uim -single -ftz 0
 ------------------------------------------------------------ */
 
 #ifndef  __mydsp_H__
@@ -134,12 +134,12 @@ Compilation options: -a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -c
 #define __export__
 
 // Version as a global string
-#define FAUSTVERSION "2.58.13"
+#define FAUSTVERSION "2.70.1"
 
 // Version as separated [major,minor,patch] values
 #define FAUSTMAJORVERSION 2
-#define FAUSTMINORVERSION 58
-#define FAUSTPATCHVERSION 13
+#define FAUSTMINORVERSION 70
+#define FAUSTPATCHVERSION 1
 
 // Use FAUST_API for code that is part of the external API but is also compiled in faust and libfaust
 // Use LIBFAUST_API for code that is compiled in faust and libfaust
@@ -258,7 +258,6 @@ struct FAUST_API UI : public UIReal<FAUSTFLOAT> {
 #include <map>
 #include <string>
 #include <algorithm>
-#include <regex>
 
 
 /*******************************************************************************
@@ -291,9 +290,15 @@ class FAUST_API PathBuilder {
          * @param src
          * @return modified string
          */
-        std::string remove0x00(const std::string& src) const
+        std::string remove0x00(const std::string& src_aux) const
         {
-            return std::regex_replace(src, std::regex("/0x00"), "");
+            std::string src = src_aux;
+            std::string from = "/0x00";
+            std::string to = "";
+            for (size_t pos = src.find(from); pos != std::string::npos; pos = src.find(from, pos + 1)) {
+                src.replace(pos, from.length(), to);
+            }
+            return src;
         }
     
         /**
@@ -361,8 +366,8 @@ class FAUST_API PathBuilder {
             int pnum = 0;
             
             for (const auto& s : fFullPaths) {
-                // Using sprintf since Teensy does not have the std::to_string function
-                sprintf(num_buffer, "%d", pnum++);
+                // Using snprintf since Teensy does not have the std::to_string function
+                snprintf(num_buffer, 16, "%d", pnum++);
                 std::string u = "/P" + std::string(num_buffer) + str2ID(remove0x00(s));
                 uniquePaths.push_back(u);
                 unique2full[u] = s;  // remember the full path associated to a unique path
@@ -425,6 +430,7 @@ class FAUST_API PathBuilder {
         // Return true for the last level of groups
         bool popLabel() { fControlsLevel.pop_back(); return fControlsLevel.size() == 0; }
     
+        // Return a complete path built from a label
         std::string buildPath(const std::string& label)
         {
             std::string res = "/";
@@ -434,6 +440,14 @@ class FAUST_API PathBuilder {
             res += label;
             return replaceCharList(res, {' ', '#', '*', ',', '?', '[', ']', '{', '}', '(', ')'}, '_');
         }
+    
+        // Assuming shortnames have been built, return the shortname from a label
+        std::string buildShortname(const std::string& label)
+        {
+            return (hasShortname()) ? fFull2Short[buildPath(label)] : "";
+        }
+    
+        bool hasShortname() { return fFull2Short.size() > 0; }
     
 };
 
@@ -556,15 +570,25 @@ class FAUST_API MapUI : public UI, public PathBuilder
          */
         void setParamValue(const std::string& str, FAUSTFLOAT value)
         {
-            if (fPathZoneMap.find(str) != fPathZoneMap.end()) {
-                *fPathZoneMap[str] = value;
-            } else if (fShortnameZoneMap.find(str) != fShortnameZoneMap.end()) {
-                *fShortnameZoneMap[str] = value;
-            } else if (fLabelZoneMap.find(str) != fLabelZoneMap.end()) {
-                *fLabelZoneMap[str] = value;
-            } else {
-                fprintf(stderr, "ERROR : setParamValue '%s' not found\n", str.c_str());
+            const auto fPathZoneMapIter = fPathZoneMap.find(str);
+            if (fPathZoneMapIter != fPathZoneMap.end()) {
+                *fPathZoneMapIter->second = value;
+                return;
             }
+            
+            const auto fShortnameZoneMapIter = fShortnameZoneMap.find(str);
+            if (fShortnameZoneMapIter != fShortnameZoneMap.end()) {
+                *fShortnameZoneMapIter->second = value;
+                return;
+            }
+            
+            const auto fLabelZoneMapIter = fLabelZoneMap.find(str);
+            if (fLabelZoneMapIter != fLabelZoneMap.end()) {
+                *fLabelZoneMapIter->second = value;
+                return;
+            }
+            
+            fprintf(stderr, "ERROR : setParamValue '%s' not found\n", str.c_str());
         }
         
         /**
@@ -576,16 +600,23 @@ class FAUST_API MapUI : public UI, public PathBuilder
          */
         FAUSTFLOAT getParamValue(const std::string& str)
         {
-            if (fPathZoneMap.find(str) != fPathZoneMap.end()) {
-                return *fPathZoneMap[str];
-            } else if (fShortnameZoneMap.find(str) != fShortnameZoneMap.end()) {
-                return *fShortnameZoneMap[str];
-            } else if (fLabelZoneMap.find(str) != fLabelZoneMap.end()) {
-                return *fLabelZoneMap[str];
-            } else {
-                fprintf(stderr, "ERROR : getParamValue '%s' not found\n", str.c_str());
-                return 0;
+            const auto fPathZoneMapIter = fPathZoneMap.find(str);
+            if (fPathZoneMapIter != fPathZoneMap.end()) {
+                return *fPathZoneMapIter->second;
             }
+            
+            const auto fShortnameZoneMapIter = fShortnameZoneMap.find(str);
+            if (fShortnameZoneMapIter != fShortnameZoneMap.end()) {
+                return *fShortnameZoneMapIter->second;
+            }
+            
+            const auto fLabelZoneMapIter = fLabelZoneMap.find(str);
+            if (fLabelZoneMapIter != fLabelZoneMap.end()) {
+                return *fLabelZoneMapIter->second;
+            }
+            
+            fprintf(stderr, "ERROR : getParamValue '%s' not found\n", str.c_str());
+            return 0;
         }
     
         // map access 
@@ -711,13 +742,21 @@ class FAUST_API MapUI : public UI, public PathBuilder
          */
         FAUSTFLOAT* getParamZone(const std::string& str)
         {
-            if (fPathZoneMap.find(str) != fPathZoneMap.end()) {
-                return fPathZoneMap[str];
-            } else if (fShortnameZoneMap.find(str) != fShortnameZoneMap.end()) {
-                return fShortnameZoneMap[str];
-            } else if (fLabelZoneMap.find(str) != fLabelZoneMap.end()) {
-                return fLabelZoneMap[str];
+            const auto fPathZoneMapIter = fPathZoneMap.find(str);
+            if (fPathZoneMapIter != fPathZoneMap.end()) {
+                return fPathZoneMapIter->second;
             }
+            
+            const auto fShortnameZoneMapIter = fShortnameZoneMap.find(str);
+            if (fShortnameZoneMapIter != fShortnameZoneMap.end()) {
+                return fShortnameZoneMapIter->second;
+            }
+            
+            const auto fLabelZoneMapIter = fLabelZoneMap.find(str);
+            if (fLabelZoneMapIter != fLabelZoneMap.end()) {
+                return fLabelZoneMapIter->second;
+            }
+
             return nullptr;
         }
     
@@ -1009,17 +1048,37 @@ class FAUST_API dsp_factory {
     
     public:
     
+        /* Return factory name */
         virtual std::string getName() = 0;
+    
+        /* Return factory SHA key */
         virtual std::string getSHAKey() = 0;
+    
+        /* Return factory expanded DSP code */
         virtual std::string getDSPCode() = 0;
+    
+        /* Return factory compile options */
         virtual std::string getCompileOptions() = 0;
+    
+        /* Get the Faust DSP factory list of library dependancies */
         virtual std::vector<std::string> getLibraryList() = 0;
+    
+        /* Get the list of all used includes */
         virtual std::vector<std::string> getIncludePathnames() = 0;
+    
+        /* Get warning messages list for a given compilation */
         virtual std::vector<std::string> getWarningMessages() = 0;
     
+        /* Create a new DSP instance, to be deleted with C++ 'delete' */
         virtual dsp* createDSPInstance() = 0;
     
+        /* Static tables initialization, possibly implemened in sub-classes*/
+        virtual void classInit(int sample_rate) {};
+    
+        /* Set a custom memory manager to be used when creating instances */
         virtual void setMemoryManager(dsp_memory_manager* manager) = 0;
+    
+        /* Return the currently set custom memory manager */
         virtual dsp_memory_manager* getMemoryManager() = 0;
     
 };
@@ -3980,6 +4039,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                     }
                     JSON << "],";
                 }
+                if (fDSPSize != -1) { tab(fTab, JSON); JSON << "\"size\": " << fDSPSize << ","; }
                 if (fMemoryLayout.size() > 0) {
                     tab(fTab, JSON);
                     JSON << "\"memory_layout\": [";
@@ -4018,7 +4078,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                     tab(fTab + 1, JSON);
                     JSON << "\"binop\": [{ ";
                     JSON << "\"total\": " << fIComp.fBinop;
-                    int size1 = fIComp.fBinopSymbolTable.size();
+                    int size1 = (int)fIComp.fBinopSymbolTable.size();
                     if (size1 > 0) {
                         JSON << ", ";
                         for (const auto& it : fIComp.fBinopSymbolTable) {
@@ -4032,7 +4092,7 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                     tab(fTab + 1, JSON);
                     JSON << "\"mathop\": [{ ";
                     JSON << "\"total\": " << fIComp.fMathop;
-                    int size2 = fIComp.fFunctionSymbolTable.size();
+                    int size2 = (int)fIComp.fFunctionSymbolTable.size();
                     if (size2 > 0) {
                         JSON << ", ";
                         for (const auto& it : fIComp.fFunctionSymbolTable) {
@@ -4046,7 +4106,6 @@ class FAUST_API JSONUIReal : public PathBuilder, public Meta, public UIReal<REAL
                     tab(fTab, JSON);
                     JSON << "}],";
                 }
-                if (fDSPSize != -1) { tab(fTab, JSON); JSON << "\"size\": " << fDSPSize << ","; }
                 if (fSHAKey != "") { tab(fTab, JSON); JSON << "\"sha_key\": \"" << fSHAKey << "\","; }
                 if (fExpandedCode != "") { tab(fTab, JSON); JSON << "\"code\": \"" << fExpandedCode << "\","; }
                 tab(fTab, JSON); JSON << "\"inputs\": " << fInputs << ",";
@@ -5735,10 +5794,24 @@ architecture section is not modified.
 #include <sstream>
 
 
-// Base class and common code for binary combiners
+/**
+ * @file dsp-combiner.h
+ * @brief DSP Combiner Library
+ *
+ * This library provides classes for combining DSP modules.
+ * It includes classes for sequencing, parallelizing, splitting, merging, recursing, and crossfading DSP modules.
+ *
+ */
 
 enum Layout { kVerticalGroup, kHorizontalGroup, kTabGroup };
 
+/**
+ * @class dsp_binary_combiner
+ * @brief Base class and common code for binary combiners
+ *
+ * This class serves as the base class for various DSP combiners that work with two DSP modules.
+ * It provides common methods for building user interfaces, allocating and deleting channels, and more.
+ */
 class dsp_binary_combiner : public dsp {
 
     protected:
@@ -5847,8 +5920,13 @@ class dsp_binary_combiner : public dsp {
 
 };
 
-// Combine two 'compatible' DSP in sequence
-
+/**
+ * @class dsp_sequencer
+ * @brief Combine two 'compatible' DSP modules in sequence
+ *
+ * This class allows you to combine two DSP modules in sequence.
+ * It computes the first DSP module's outputs and uses them as inputs for the second DSP module.
+ */
 class dsp_sequencer : public dsp_binary_combiner {
 
     private:
@@ -5894,8 +5972,13 @@ class dsp_sequencer : public dsp_binary_combiner {
 
 };
 
-// Combine two DSP in parallel
-
+/**
+ * @class dsp_parallelizer
+ * @brief Combine two DSP modules in parallel
+ *
+ * This class combines two DSP modules in parallel.
+ * It computes both DSP modules separately and combines their outputs.
+ */
 class dsp_parallelizer : public dsp_binary_combiner {
 
     private:
@@ -5953,8 +6036,13 @@ class dsp_parallelizer : public dsp_binary_combiner {
 
 };
 
-// Combine two 'compatible' DSP in splitter
-
+/**
+ * @class dsp_splitter
+ * @brief Combine two 'compatible' DSP modules in a splitter
+ *
+ * This class combines two DSP modules in a splitter configuration.
+ * The outputs of the first DSP module are connected to the inputs of the second DSP module.
+ */
 class dsp_splitter : public dsp_binary_combiner {
 
     private:
@@ -6005,8 +6093,13 @@ class dsp_splitter : public dsp_binary_combiner {
         }
 };
 
-// Combine two 'compatible' DSP in merger
-
+/**
+ * @class dsp_merger
+ * @brief Combine two 'compatible' DSP modules in a merger
+ *
+ * This class combines two DSP modules in a merger configuration.
+ * The outputs of the first DSP module are combined with the inputs of the second DSP module.
+ */
 class dsp_merger : public dsp_binary_combiner {
 
     private:
@@ -6074,8 +6167,13 @@ class dsp_merger : public dsp_binary_combiner {
         }
 };
 
-// Combine two 'compatible' DSP in a recursive way
-
+/**
+ * @class dsp_recursiver
+ * @brief Combine two 'compatible' DSP modules in a recursive way
+ *
+ * This class recursively combines two DSP modules.
+ * The outputs of each module are fed as inputs to the other module in a recursive manner.
+ */
 class dsp_recursiver : public dsp_binary_combiner {
 
     private:
@@ -6150,12 +6248,15 @@ class dsp_recursiver : public dsp_binary_combiner {
 
 };
 
-/*
- Crossfade between two DSP.
- When fCrossfade = 1, the first DSP only is computed, when fCrossfade = 0,
- the second DSP only is computed, otherwise both DSPs are computed and mixed.
-*/
-
+/**
+ * @class dsp_crossfader
+ * @brief Crossfade between two DSP modules
+ *
+ * This class allows you to crossfade between two DSP modules.
+ * The crossfade parameter (as a slider) controls the mix between the two modules' outputs.
+ * When Crossfade = 1, the first DSP only is computed, when Crossfade = 0,
+ * the second DSP only is computed, otherwise both DSPs are computed and mixed.
+ */
 class dsp_crossfader: public dsp_binary_combiner {
 
     private:
@@ -6249,11 +6350,29 @@ class dsp_crossfader: public dsp_binary_combiner {
 #ifndef __dsp_algebra_api__
 #define __dsp_algebra_api__
 
-// DSP algebra API
-/*
- Each operation takes two DSP and a optional Layout and Label parameters, returns the combined DSPs, or null if failure with an error message.
+/**
+ * DSP algebra API allowing to combine DSPs using the 5 operators Faust block algebra and an additional crossfader combiner.
+ * The two arguments GUI are composed in a group, either kVerticalGroup, kHorizontalGroup or kTabGroup with a label.
+ *
+ * Each operation takes two DSP and a optional layout and label parameters, returns the combined DSPs,
+ * or null if failure with an error message.
+ * 
+ * It includes methods to create sequencers, parallelizers, splitters, mergers, recursivers, and crossfaders.
  */
 
+/**
+ * Create a DSP Sequencer
+ *
+ * This method creates a DSP Sequencer, which combines two DSP modules in a sequencer configuration.
+ * The outputs of the first DSP module are connected to the inputs of the second DSP module.
+ *
+ * @param dsp1 The first DSP module to combine
+ * @param dsp2 The second DSP module to combine
+ * @param error A reference to a string to store error messages (if any)
+ * @param layout The layout for the combined user interface (default: kTabGroup)
+ * @param label The label for the combiner (default: "Sequencer")
+ * @return A pointer to the created DSP Sequencer, or nullptr if an error occurs
+ */
 static dsp* createDSPSequencer(dsp* dsp1, dsp* dsp2,
                                std::string& error,
                                Layout layout = Layout::kTabGroup,
@@ -6271,6 +6390,19 @@ static dsp* createDSPSequencer(dsp* dsp1, dsp* dsp2,
     }
 }
 
+/**
+ * Create a DSP Parallelizer
+ *
+ * This method creates a DSP Parallelizer, which combines two DSP modules in parallel.
+ * The resulting DSP module computes both input modules separately and combines their outputs.
+ *
+ * @param dsp1 The first DSP module to combine
+ * @param dsp2 The second DSP module to combine
+ * @param error A reference to a string to store error messages (if any)
+ * @param layout The layout for the combined user interface (default: kTabGroup)
+ * @param label The label for the combiner (default: "Parallelizer")
+ * @return A pointer to the created DSP Parallelizer, or nullptr if an error occurs
+ */
 static dsp* createDSPParallelizer(dsp* dsp1, dsp* dsp2,
                                   std::string& error,
                                   Layout layout = Layout::kTabGroup,
@@ -6279,6 +6411,19 @@ static dsp* createDSPParallelizer(dsp* dsp1, dsp* dsp2,
     return new dsp_parallelizer(dsp1, dsp2, 4096, layout, label);
 }
 
+/**
+ * Create a DSP Splitter
+ *
+ * This method creates a DSP Splitter, which combines two 'compatible' DSP modules in a splitter configuration.
+ * The outputs of the first DSP module are connected to the inputs of the second DSP module.
+ *
+ * @param dsp1 The first DSP module to combine
+ * @param dsp2 The second DSP module to combine
+ * @param error A reference to a string to store error messages (if any)
+ * @param layout The layout for the combined user interface (default: kTabGroup)
+ * @param label The label for the combiner (default: "Splitter")
+ * @return A pointer to the created DSP Splitter, or nullptr if an error occurs
+ */
 static dsp* createDSPSplitter(dsp* dsp1, dsp* dsp2, std::string& error, Layout layout = Layout::kTabGroup, const std::string& label = "Splitter")
 {
     if (dsp1->getNumOutputs() == 0) {
@@ -6302,6 +6447,19 @@ static dsp* createDSPSplitter(dsp* dsp1, dsp* dsp2, std::string& error, Layout l
     }
 }
 
+/**
+ * Create a DSP Merger
+ *
+ * This method creates a DSP Merger, which combines two 'compatible' DSP modules in a merger configuration.
+ * The outputs of the first DSP module are combined with the inputs of the second DSP module.
+ *
+ * @param dsp1 The first DSP module to combine
+ * @param dsp2 The second DSP module to combine
+ * @param error A reference to a string to store error messages (if any)
+ * @param layout The layout for the combined user interface (default: kTabGroup)
+ * @param label The label for the combiner (default: "Merger")
+ * @return A pointer to the created DSP Merger, or nullptr if an error occurs
+ */
 static dsp* createDSPMerger(dsp* dsp1, dsp* dsp2,
                             std::string& error,
                             Layout layout = Layout::kTabGroup,
@@ -6328,6 +6486,19 @@ static dsp* createDSPMerger(dsp* dsp1, dsp* dsp2,
     }
 }
 
+/**
+ * Create a DSP Recursiver
+ *
+ * This method creates a DSP Recursiver, which combines two 'compatible' DSP modules in a recursive way.
+ * The outputs of each module are fed as inputs to the other module in a recursive manner.
+ *
+ * @param dsp1 The first DSP module to combine
+ * @param dsp2 The second DSP module to combine
+ * @param error A reference to a string to store error messages (if any)
+ * @param layout The layout for the combined user interface (default: kTabGroup)
+ * @param label The label for the combiner (default: "Recursiver")
+ * @return A pointer to the created DSP Recursiver, or nullptr if an error occurs
+ */
 static dsp* createDSPRecursiver(dsp* dsp1, dsp* dsp2,
                                 std::string& error,
                                 Layout layout = Layout::kTabGroup,
@@ -6355,6 +6526,21 @@ static dsp* createDSPRecursiver(dsp* dsp1, dsp* dsp2,
     }
 }
 
+/**
+ * Create a DSP Crossfader
+ *
+ * This method creates a DSP Crossfader, which allows you to crossfade between two DSP modules.
+ * The crossfade parameter (as a slider) controls the mix between the two modules' outputs.
+ * When Crossfade = 1, the first DSP only is computed, when Crossfade = 0,
+ * the second DSP only is computed, otherwise both DSPs are computed and mixed.
+ *
+ * @param dsp1 The first DSP module to combine
+ * @param dsp2 The second DSP module to combine
+ * @param error A reference to a string to store error messages (if any)
+ * @param layout The layout for the combined user interface (default: kTabGroup)
+ * @param label The label for the crossfade slider (default: "Crossfade")
+ * @return A pointer to the created DSP Crossfader, or nullptr if an error occurs
+ */
 static dsp* createDSPCrossfader(dsp* dsp1, dsp* dsp2,
                                 std::string& error,
                                 Layout layout = Layout::kTabGroup,
@@ -6362,14 +6548,14 @@ static dsp* createDSPCrossfader(dsp* dsp1, dsp* dsp2,
 {
     if (dsp1->getNumInputs() != dsp2->getNumInputs()) {
         std::stringstream error_aux;
-        error_aux << "Connection error in dsp_crossfader : the number of inputs ("
+        error_aux << "Error in dsp_crossfader : the number of inputs ("
         << dsp1->getNumInputs() << ") of A "
         << "must be equal to the number of inputs (" << dsp2->getNumInputs() << ") of B" << std::endl;
         error = error_aux.str();
         return nullptr;
     } else if (dsp1->getNumOutputs() != dsp2->getNumOutputs()) {
         std::stringstream error_aux;
-        error_aux << "Connection error in dsp_crossfader : the number of outputs ("
+        error_aux << "Error in dsp_crossfader : the number of outputs ("
         << dsp1->getNumOutputs() << ") of A "
         << "must be equal to the number of outputs (" << dsp2->getNumOutputs() << ") of B" << std::endl;
         error = error_aux.str();
@@ -7026,9 +7212,9 @@ class dsp_up_sampler : public sr_sampler<FILTER> {
 
 // Create a UP/DS + Filter adapted DSP
 template <typename REAL>
-dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
+dsp* createSRAdapter(dsp* DSP, std::string& error, int ds = 0, int us = 0, int filter = 0)
 {
-    if (ds > 0) {
+    if (ds >= 2) {
         switch (filter) {
             case 0:
                 if (ds == 2) {
@@ -7044,8 +7230,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (ds == 32) {
                     return new dsp_down_sampler<Identity<Double<1,1>, 32>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : ds factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : ds factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 1:
@@ -7062,8 +7247,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (ds == 32) {
                     return new dsp_down_sampler<LowPass3<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : ds factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : ds factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 2:
@@ -7080,8 +7264,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (ds == 32) {
                     return new dsp_down_sampler<LowPass4<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : ds factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : ds factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 3:
@@ -7098,8 +7281,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (ds == 32) {
                     return new dsp_down_sampler<LowPass3e<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : ds factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : ds factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 4:
@@ -7116,16 +7298,14 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (ds == 32) {
                     return new dsp_down_sampler<LowPass6e<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : ds factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : ds factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             default:
-                fprintf(stderr, "ERROR : filter type must be in [0..4] range\n");
-                assert(false);
+                error = "ERROR : filter type must be in [0..4] range\n";
                 return nullptr;
         }
-    } else if (us > 0) {
+    } else if (us >= 2) {
         
         switch (filter) {
             case 0:
@@ -7142,8 +7322,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (us == 32) {
                     return new dsp_up_sampler<Identity<Double<1,1>, 32>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : us factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : us factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 1:
@@ -7160,8 +7339,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (us == 32) {
                     return new dsp_up_sampler<LowPass3<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : us factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : us factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 2:
@@ -7178,8 +7356,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (us == 32) {
                     return new dsp_up_sampler<LowPass4<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : us factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : us factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 3:
@@ -7196,8 +7373,7 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (us == 32) {
                     return new dsp_up_sampler<LowPass3e<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : us factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : us factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             case 4:
@@ -7214,13 +7390,11 @@ dsp* createSRAdapter(dsp* DSP, int ds = 0, int us = 0, int filter = 0)
                 } else if (us == 32) {
                     return new dsp_up_sampler<LowPass6e<Double<45,100>, 32, REAL>>(DSP);
                 } else {
-                    fprintf(stderr, "ERROR : us factor type must be in [2..32] range\n");
-                    assert(false);
+                    error = "ERROR : us factor type must be in [2..32] range\n";
                     return nullptr;
                 }
             default:
-                fprintf(stderr, "ERROR : filter type must be in [0..4] range\n");
-                assert(false);
+                error = "ERROR : filter type must be in [0..4] range\n";
                 return nullptr;
         }
     } else {
@@ -8906,8 +9080,10 @@ class GroupUI : public GUI, public PathBuilder {
 
     private:
 
+        // Map to associate labels with UI group items
         std::map<std::string, uiGroupItem*> fLabelZoneMap;
 
+        // Insert a zone into the map based on the label folloing the freq/gain/gate polyphonic convention
         void insertMap(std::string label, FAUSTFLOAT* zone)
         {
             if (!MapUI::endsWith(label, "/gate")
@@ -8999,12 +9175,14 @@ struct dsp_voice : public MapUI, public decorator_dsp {
     
     typedef std::function<double(int)> TransformFunction;
   
+    // Convert MIDI note to frequency
     static double midiToFreq(double note)
     {
         return 440.0 * std::pow(2.0, (note-69.0)/12.0);
     }
     
-    int fCurNote;                       // Playing note pitch
+    // Voice state and properties
+    int fCurNote;                       // Current playing note pitch
     int fNextNote;                      // In kLegatoVoice state, next note to play
     int fNextVel;                       // In kLegatoVoice state, next velocity to play
     int fDate;                          // KeyOn date
@@ -9022,7 +9200,7 @@ struct dsp_voice : public MapUI, public decorator_dsp {
  
     dsp_voice(dsp* dsp):decorator_dsp(dsp)
     {
-        // Default versions
+        // Default conversion functions
         fVelFun = [](int velocity) { return double(velocity)/127.0; };
         fKeyFun = [](int pitch) { return midiToFreq(pitch); };
         dsp->buildUserInterface(this);
@@ -9036,6 +9214,7 @@ struct dsp_voice : public MapUI, public decorator_dsp {
     virtual ~dsp_voice()
     {}
     
+    // Compute a slice of audio
     void computeSlice(int offset, int slice, FAUSTFLOAT** inputs, FAUSTFLOAT** outputs)
     {
         FAUSTFLOAT** inputsSlice = static_cast<FAUSTFLOAT**>(alloca(sizeof(FAUSTFLOAT*) * getNumInputs()));
@@ -9049,6 +9228,7 @@ struct dsp_voice : public MapUI, public decorator_dsp {
         compute(slice, inputsSlice, outputsSlice);
     }
     
+    // Compute audio in legato mode
     void computeLegato(int count, FAUSTFLOAT** inputs, FAUSTFLOAT** outputs)
     {
         int slice = count/2;
@@ -9068,6 +9248,7 @@ struct dsp_voice : public MapUI, public decorator_dsp {
         computeSlice(slice, slice, inputs, outputs);
     }
 
+    // Extract control paths from fullpath map
     void extractPaths(std::vector<std::string>& gate, std::vector<std::string>& freq, std::vector<std::string>& gain)
     {
         // Keep gain/vel|velocity, freq/key and gate labels
@@ -9091,11 +9272,13 @@ struct dsp_voice : public MapUI, public decorator_dsp {
         }
     }
     
+    // Reset voice
     void reset()
     {
         init(getSampleRate());
     }
  
+    // Clear instance state
     void instanceClear()
     {
         decorator_dsp::instanceClear();
@@ -9116,7 +9299,7 @@ struct dsp_voice : public MapUI, public decorator_dsp {
         }
     }
 
-    // Normalized MIDI velocity [0..1]
+    // KeyOn with normalized MIDI velocity [0..1]
     void keyOn(int pitch, double velocity)
     {
         for (size_t i = 0; i < fFreqPath.size(); i++) {
@@ -9162,15 +9345,16 @@ struct dsp_voice : public MapUI, public decorator_dsp {
  */
 struct dsp_voice_group {
 
+    // GUI group for controlling voice parameters
     GroupUI fGroups;
 
     std::vector<dsp_voice*> fVoiceTable; // Individual voices
     dsp* fVoiceGroup;                    // Voices group to be used for GUI grouped control
 
-    FAUSTFLOAT fPanic;
+    FAUSTFLOAT fPanic;  // Panic button value
 
-    bool fVoiceControl;
-    bool fGroupControl;
+    bool fVoiceControl; // Voice control mode
+    bool fGroupControl; // Group control mode
 
     dsp_voice_group(uiCallback cb, void* arg, bool control, bool group)
         :fGroups(&fPanic, cb, arg),
@@ -9186,16 +9370,19 @@ struct dsp_voice_group {
         delete fVoiceGroup;
     }
 
+    // Add a voice to the group
     void addVoice(dsp_voice* voice)
     {
         fVoiceTable.push_back(voice);
     }
-
+        
+    // Clear all voices from the group
     void clearVoices()
     {
         fVoiceTable.clear();
     }
 
+    // Initialize the voice group
     void init()
     {
         // Groups all uiItem for a given path
@@ -9206,6 +9393,7 @@ struct dsp_voice_group {
         }
     }
     
+    // Reset the user interface for each voice instance
     void instanceResetUserInterface()
     {
         for (size_t i = 0; i < fVoiceTable.size(); i++) {
@@ -9213,6 +9401,7 @@ struct dsp_voice_group {
         }
     }
 
+    // Build the user interface for the voice group
     void buildUserInterface(UI* ui_interface)
     {
         if (fVoiceTable.size() > 1) {
@@ -9254,10 +9443,10 @@ class dsp_poly : public decorator_dsp, public midi, public JSONControl {
     protected:
     
     #ifdef EMCC
-        MapUI fMapUI;
-        std::string fJSON;
-        midi_handler fMidiHandler;
-        MidiUI fMIDIUI;
+        MapUI fMapUI;               // Map for UI control
+        std::string fJSON;          // JSON representation of the UI
+        midi_handler fMidiHandler;  // MIDI handler for the UI
+        MidiUI fMIDIUI;             // MIDI UI for the DSP
     #endif
     
     public:
@@ -9366,11 +9555,12 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
 
     private:
 
-        FAUSTFLOAT** fMixBuffer;
-        FAUSTFLOAT** fOutBuffer;
-        midi_interface* fMidiHandler; // The midi_interface the DSP is connected to
-        int fDate;
+        FAUSTFLOAT** fMixBuffer;        // Intermediate buffer for mixing voices
+        FAUSTFLOAT** fOutBuffer;        // Intermediate buffer for output
+        midi_interface* fMidiHandler;   // The midi_interface the DSP is connected to
+        int fDate;                      // Current date for managing voices
     
+        // Fade out the audio in the buffer
         void fadeOut(int count, FAUSTFLOAT** outBuffer)
         {
             // FadeOut on half buffer
@@ -9383,6 +9573,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             }
         }
     
+        // Mix the audio from the mix buffer to the output buffer, and also calculate the maximum level on the buffer
         FAUSTFLOAT mixCheckVoice(int count, FAUSTFLOAT** mixBuffer, FAUSTFLOAT** outBuffer)
         {
             FAUSTFLOAT level = 0;
@@ -9397,6 +9588,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             return level;
         }
     
+        // Mix the audio from the mix buffer to the output buffer
         void mixVoice(int count, FAUSTFLOAT** mixBuffer, FAUSTFLOAT** outBuffer)
         {
             for (int chan = 0; chan < getNumOutputs(); chan++) {
@@ -9408,6 +9600,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             }
         }
     
+        // Copy the audio from one buffer to another
         void copy(int count, FAUSTFLOAT** mixBuffer, FAUSTFLOAT** outBuffer)
         {
             for (int chan = 0; chan < getNumOutputs(); chan++) {
@@ -9415,6 +9608,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             }
         }
 
+        // Clear the audio buffer
         void clear(int count, FAUSTFLOAT** outBuffer)
         {
             for (int chan = 0; chan < getNumOutputs(); chan++) {
@@ -9422,6 +9616,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             }
         }
     
+        // Get the index of a voice currently playing a specific pitch
         int getPlayingVoice(int pitch)
         {
             int voice_playing = kNoVoice;
@@ -9440,6 +9635,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             return voice_playing;
         }
     
+        // Allocate a voice with a given type
         int allocVoice(int voice, int type)
         {
             fVoiceTable[voice]->fDate++;
@@ -9447,7 +9643,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             return voice;
         }
     
-        // Always returns a voice
+        // Get a free voice for allocation, always returns a voice
         int getFreeVoice()
         {
             // Looks for the first available voice
@@ -9499,6 +9695,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             }
         }
 
+        // Callback for panic button
         static void panic(FAUSTFLOAT val, void* arg)
         {
             if (val == FAUSTFLOAT(1)) {
@@ -9506,6 +9703,7 @@ class mydsp_poly : public dsp_voice_group, public dsp_poly {
             }
         }
 
+        // Check if the DSP is polyphonic
         bool checkPolyphony()
         {
             if (fVoiceTable.size() > 0) {
@@ -9949,7 +10147,6 @@ class mydsp : public dsp {
 	
  public:
 	
-	FAUSTFLOAT fButton0;
 	int iVec0[2];
 	float fRec0[2];
 	int fSampleRate;
@@ -9958,20 +10155,20 @@ class mydsp : public dsp {
 	mydsp() {}
 
 	void metadata(Meta* m) { 
-		m->declare("compile_options", "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -uim -single -ftz 0");
+		m->declare("compile_options", "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -mdd 1024 -mdy 33 -uim -single -ftz 0");
 		m->declare("filename", "SyncTester.dsp");
 		m->declare("maths.lib/author", "GRAME");
 		m->declare("maths.lib/copyright", "GRAME");
 		m->declare("maths.lib/license", "LGPL with exception");
 		m->declare("maths.lib/name", "Faust Math Library");
-		m->declare("maths.lib/version", "2.6");
+		m->declare("maths.lib/version", "2.7.0");
 		m->declare("name", "SyncTester");
-		m->declare("oscillators.lib/lf_sawpos_reset:author", "Bart Brouns, revised by Stéphane Letz");
-		m->declare("oscillators.lib/lf_sawpos_reset:licence", "STK-4.3");
+		m->declare("oscillators.lib/lf_sawpos:author", "Bart Brouns, revised by Stéphane Letz");
+		m->declare("oscillators.lib/lf_sawpos:licence", "STK-4.3");
 		m->declare("oscillators.lib/name", "Faust Oscillator Library");
-		m->declare("oscillators.lib/version", "0.4");
+		m->declare("oscillators.lib/version", "1.4.0");
 		m->declare("platform.lib/name", "Generic Platform Library");
-		m->declare("platform.lib/version", "0.3");
+		m->declare("platform.lib/version", "1.3.0");
 	}
 
 	virtual int getNumInputs() {
@@ -9989,7 +10186,6 @@ class mydsp : public dsp {
 	}
 	
 	virtual void instanceResetUserInterface() {
-		fButton0 = FAUSTFLOAT(0.0f);
 	}
 	
 	virtual void instanceClear() {
@@ -10005,6 +10201,7 @@ class mydsp : public dsp {
 		classInit(sample_rate);
 		instanceInit(sample_rate);
 	}
+	
 	virtual void instanceInit(int sample_rate) {
 		instanceConstants(sample_rate);
 		instanceResetUserInterface();
@@ -10021,18 +10218,16 @@ class mydsp : public dsp {
 	
 	virtual void buildUserInterface(UI* ui_interface) {
 		ui_interface->openVerticalBox("SyncTester");
-		ui_interface->addButton("reset", &fButton0);
 		ui_interface->closeBox();
 	}
 	
 	virtual void compute(int count, FAUSTFLOAT** RESTRICT inputs, FAUSTFLOAT** RESTRICT outputs) {
 		FAUSTFLOAT* input0 = inputs[0];
 		FAUSTFLOAT* output0 = outputs[0];
-		int iSlow0 = int(float(fButton0));
 		for (int i0 = 0; i0 < count; i0 = i0 + 1) {
 			float fTemp0 = float(input0[i0]);
 			iVec0[0] = 1;
-			float fTemp1 = (((1 - iVec0[1]) | iSlow0) ? 0.0f : fRec0[1] + 3.051851e-05f);
+			float fTemp1 = ((1 - iVec0[1]) ? 0.0f : fRec0[1] + 3.0517578e-05f);
 			fRec0[0] = fTemp1 - std::floor(fTemp1);
 			output0[i0] = FAUSTFLOAT(((fRec0[0] >= fTemp0) ? fTemp0 + (1.0f - fRec0[0]) : fTemp0 - fRec0[0]));
 			iVec0[1] = iVec0[0];
@@ -10046,16 +10241,14 @@ class mydsp : public dsp {
 	
 	#define FAUST_FILE_NAME "SyncTester.dsp"
 	#define FAUST_CLASS_NAME "mydsp"
-	#define FAUST_COMPILATION_OPIONS "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -uim -single -ftz 0"
+	#define FAUST_COMPILATION_OPIONS "-a /usr/local/share/faust/teensy/teensy.cpp -lang cpp -i -ct 1 -es 1 -mcd 16 -mdd 1024 -mdy 33 -uim -single -ftz 0"
 	#define FAUST_INPUTS 1
 	#define FAUST_OUTPUTS 1
-	#define FAUST_ACTIVES 1
+	#define FAUST_ACTIVES 0
 	#define FAUST_PASSIVES 0
 
-	FAUST_ADDBUTTON("reset", fButton0);
 
 	#define FAUST_LIST_ACTIVES(p) \
-		p(BUTTON, reset, "reset", fButton0, 0.0f, 0.0f, 1.0f, 1.0f) \
 
 	#define FAUST_LIST_PASSIVES(p) \
 
@@ -10068,8 +10261,9 @@ class mydsp : public dsp {
 #define MULT_16 32767
 #define DIV_16 0.0000305185
 
-unsigned __exidx_start;
-unsigned __exidx_end;
+// Not needed
+// unsigned __exidx_start;
+// unsigned __exidx_end;
 
 #if MIDICTRL
 std::list<GUI*> GUI::fGuiList;

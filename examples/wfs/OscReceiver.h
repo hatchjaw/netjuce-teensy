@@ -6,8 +6,10 @@
 #define NETJUCE_TEENSY_OSCRECEIVER_H
 
 #include "Component.h"
-#include <NativeEthernet.h>
+#include <QNEthernet.h>
 #include <OSCBundle.h>
+
+using namespace qindesign::network;
 
 class OscReceiver : public Component {
 public:
@@ -26,7 +28,7 @@ private:
 
     void parsePosition(OSCMessage &msg, int addrOffset);
 
-    EthernetUDP udp;
+    EthernetUDP udp{16};
     OSCBundle bundleIn;
     OSCMessage messageIn;
 };
