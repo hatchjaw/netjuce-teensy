@@ -87,7 +87,7 @@ bool NetJUCEClient::begin()
     Serial.println(settings);
 
     Ethernet.macAddress(mac);
-    Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+    Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     // TODO: check whether resulting clientIP is the same as the server.
@@ -107,7 +107,7 @@ bool NetJUCEClient::begin()
                              }
                          });
 
-    Ethernet.begin(clientIP, netmask, gatewayIP);
+    return Ethernet.begin(clientIP, netmask, gatewayIP);
 }
 
 bool NetJUCEClient::isConnected() const

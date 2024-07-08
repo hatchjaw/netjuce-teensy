@@ -101,7 +101,7 @@ private:
     volatile bool packetReady{false};
 
     double sampleRate{AUDIO_SAMPLE_RATE_EXACT};
-    SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .95, 1e-6};
+    SmoothedValue_V2<double> fs{AUDIO_SAMPLE_RATE_EXACT, .9, 1e-6};
 
     uint16_t prevSeqNum{0};
     int numPacketsDropped{0};

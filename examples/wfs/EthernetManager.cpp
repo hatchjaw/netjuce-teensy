@@ -8,7 +8,7 @@ bool EthernetManager::init() {
     localIP = context.clientSettings.adapterIP;
 
     Ethernet.macAddress(mac);
-    Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n",
+    Serial.printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     // TODO: check whether resulting clientIP is the same as the server.
@@ -29,7 +29,7 @@ bool EthernetManager::init() {
         }
     });
 
-    Ethernet.begin(localIP, netmask, gatewayIP);
+    return Ethernet.begin(localIP, netmask, gatewayIP);
 }
 
 size_t EthernetManager::printTo(Print &p) const {
