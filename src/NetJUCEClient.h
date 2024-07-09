@@ -36,10 +36,6 @@ public:
      */
     bool begin();
 
-    bool isConnected() const;
-
-    void connect(uint connectTimeoutMs = 1000);
-
     /**
      * Operations that occur on the loop ISR.
      */
@@ -48,6 +44,14 @@ public:
 private:
     const uint16_t kReceiveTimeoutMs{5000};
     const int kExpectedReceiveInterval{int(1000000 * AUDIO_BLOCK_SAMPLES / AUDIO_SAMPLE_RATE)};
+    elapsedMillis usageReportTimer;
+    const uint32_t kUsageReportInterval{5000};
+
+    /**
+     * Attempt to join the multicast group.
+     * @param connectTimeoutMs
+     */
+    void connect(uint connectTimeoutMs = 1000);
 
     /**
      * Operations that occur on the audio ISR.

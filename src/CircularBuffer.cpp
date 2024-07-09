@@ -11,14 +11,15 @@ CircularBuffer<T>::CircularBuffer(uint8_t numChannels,
         kNumChannels{numChannels},
         kLength{length},
         kFloatLength{static_cast<float>(length)},
-        kRwDeltaWindow(1.f/3.f),
+        kRwDeltaWindow(Utils::clamp(RW_DELTA_WINDOW_PROPORTION, 0.f, 1.f)),
         kRwDeltaThresh(
                 kFloatLength * (.5f - (kRwDeltaWindow / 2.f)),
                 kFloatLength * (.5f + (kRwDeltaWindow / 2.f))
         ),
         buffer{new T *[numChannels]},
         debugMode{settings.bufferDebugMode},
-        resamplingMode{settings.resamplingMode} {
+        resamplingMode{settings.resamplingMode}
+{
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
         buffer[ch] = new T[kLength];
@@ -32,8 +33,8 @@ CircularBuffer<T>::CircularBuffer(uint8_t numChannels,
         visualiser[0] = '|';
         visualiser[VISUALISER_LENGTH - 1] = '|';
         if (resamplingMode > NO_RESAMPLE) {
-            auto normLoThresh = static_cast<int>(roundf(100.f * (1.f - (kRwDeltaThresh.first / kFloatLength))));
-            auto normHiThresh = static_cast<int>(roundf(100.f * (1.f - (kRwDeltaThresh.second / kFloatLength))));
+            auto normLoThresh = static_cast<int>(roundf((VISUALISER_LENGTH - 1) * (1.f - (kRwDeltaThresh.first / kFloatLength))));
+            auto normHiThresh = static_cast<int>(roundf((VISUALISER_LENGTH - 1) * (1.f - (kRwDeltaThresh.second / kFloatLength))));
             visualiser[normLoThresh] = '<';
             visualiser[normHiThresh] = '>';
         }
@@ -42,7 +43,8 @@ CircularBuffer<T>::CircularBuffer(uint8_t numChannels,
 
 
 template<typename T>
-CircularBuffer<T>::~CircularBuffer() {
+CircularBuffer<T>::~CircularBuffer()
+{
     for (int i = 0; i < kNumChannels; ++i) {
         delete buffer[i];
     }
@@ -50,7 +52,8 @@ CircularBuffer<T>::~CircularBuffer() {
 }
 
 template<typename T>
-void CircularBuffer<T>::clear() {
+void CircularBuffer<T>::clear()
+{
 //    memset(*buffer, 0, kNumChannels * kLength * sizeof(T));
 
     for (int ch = 0; ch < kNumChannels; ++ch) {
@@ -72,7 +75,8 @@ void CircularBuffer<T>::clear() {
 }
 
 template<typename T>
-void CircularBuffer<T>::write(const T **data, uint16_t len) {
+void CircularBuffer<T>::write(const T **data, uint16_t len)
+{
 //    Serial.printf("write start -- writeIndex: %d; readIndex: %d\n", writeIndex, readIndex);
     for (int n = 0; n < len; ++n, ++writeIndex, ++numSampleWrites) {
         if (writeIndex == kLength) {
@@ -92,7 +96,8 @@ void CircularBuffer<T>::write(const T **data, uint16_t len) {
 }
 
 template<typename T>
-void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
+void CircularBuffer<T>::read(T **bufferToFill, uint16_t len)
+{
     auto d1{0}, d2{0};
 
     if (resamplingMode >= TRUNCATE) {
@@ -133,19 +138,22 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             // Visualise the state of the read-write delta.
             if (debugMode > NO_BUFFER_DEBUG && debugTimer > 5000) {
                 if (n == 0) {
-                    d1 = static_cast<int>(roundf(100.f * (1.f - (rwDelta / kFloatLength))));
+                    d1 = static_cast<int>(roundf((VISUALISER_LENGTH - 1) * (1.f - (rwDelta / kFloatLength))));
                 } else if (n == len - 1) {
-                    d2 = static_cast<int>(roundf(100.f * (1.f - (rwDelta / kFloatLength))));
+                    d2 = static_cast<int>(roundf((VISUALISER_LENGTH - 1) * (1.f - (rwDelta / kFloatLength))));
 
-                    auto temp1{visualiser[d1]}, temp2{visualiser[d2]};
+                    char temp[VISUALISER_LENGTH - 1];
+                    memcpy(temp, visualiser, VISUALISER_LENGTH);
                     visualiser[d1] = '#';
                     visualiser[d2] = '#';
+                    for (int d{d1 + 1}; d < d2; ++d) {
+                        visualiser[d] = '=';
+                    }
                     Serial.printf("%s%d %s %3f (+%.8f)%s",
                                   debugMode == RW_DELTA_METER ? "\r" : "",
                                   kLength, visualiser, rwDelta, increment,
                                   debugMode == RW_DELTA_HISTORY ? "\n" : "");
-                    visualiser[d1] = temp1;
-                    visualiser[d2] = temp2;
+                    memcpy(visualiser, temp, VISUALISER_LENGTH);
                 }
             }
         }
@@ -180,9 +188,9 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
             // Visualise the state of the read-write delta.
             if (debugMode > NO_BUFFER_DEBUG && debugTimer > 5000) {
                 if (n == 0) {
-                    d1 = static_cast<int>(roundf(100.f * (1.f - (static_cast<float>(rwDelta) / kFloatLength))));
+                    d1 = static_cast<int>(roundf((VISUALISER_LENGTH - 1) * (1.f - (static_cast<float>(rwDelta) / kFloatLength))));
                 } else if (n == len - 1) {
-                    d2 = static_cast<int>(roundf(100.f * (1.f - (static_cast<float>(rwDelta) / kFloatLength))));
+                    d2 = static_cast<int>(roundf((VISUALISER_LENGTH - 1) * (1.f - (static_cast<float>(rwDelta) / kFloatLength))));
 
                     auto temp1{visualiser[d1]}, temp2{visualiser[d2]};
                     visualiser[d1] = '#';
@@ -209,7 +217,8 @@ void CircularBuffer<T>::read(T **bufferToFill, uint16_t len) {
 }
 
 template<typename T>
-float CircularBuffer<T>::getReadWriteDelta() {
+float CircularBuffer<T>::getReadWriteDelta()
+{
     auto fWrite{static_cast<float>(writeIndex)};
     if (readPos > fWrite) {
         return fWrite + kFloatLength - readPos;
@@ -219,7 +228,8 @@ float CircularBuffer<T>::getReadWriteDelta() {
 }
 
 template<typename T>
-void CircularBuffer<T>::setReadPosIncrement() {
+void CircularBuffer<T>::setReadPosIncrement()
+{
     // Update the read increment periodically, based on the ratio of writes
     // to reads during that period.
     // If writing more blocks than reading, speed up; if reading more blocks
@@ -237,7 +247,8 @@ void CircularBuffer<T>::setReadPosIncrement() {
 }
 
 template<typename T>
-T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float alpha) {
+T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float alpha)
+{
     int r{readIdx};
     auto rm{r - 1}, rp{r + 1}, rpp{r + 2};
     if (r == 0) {
@@ -257,7 +268,11 @@ T CircularBuffer<T>::interpolateCubic(T *channelData, uint16_t readIdx, float al
 }
 
 template<typename T>
-float CircularBuffer<T>::getDriftRatio(bool andPrint) {
+float CircularBuffer<T>::getDriftRatio(bool andPrint)
+{
+    // Don't try to divide by zero.
+    if (numBlockReads == 0) return 1.f;
+
     // writes > reads, the server is running fast; ratio > 1; client should speed up.
     // writes < reads, the client is running fast; ratio < 1; client should slow down.
     driftRatio = static_cast<float>(numBlockWrites) / static_cast<float>(numBlockReads);
@@ -265,13 +280,12 @@ float CircularBuffer<T>::getDriftRatio(bool andPrint) {
     // which it needn't necessarily be.
     if (andPrint) {
 //        debugTimer = 0;
-        Serial.printf("%swrites %" PRIu64 ":%" PRIu64 " reads - drift ratio: %.7f\n",
+        Serial.printf("%swrites %" PRIu64 ":%" PRIu64 " reads\n",
                       debugMode == RW_DELTA_METER ? "\n" : "",
                       numBlockWrites, //blocksWrittenSinceLastUpdate,
-                      numBlockReads, //blocksReadSinceLastUpdate,
-                      driftRatio);
+                      numBlockReads); //blocksReadSinceLastUpdate);
     }
-    numBlockWrites = 0;
-    numBlockReads = 0;
+//    numBlockWrites = 0;
+//    numBlockReads = 0;
     return driftRatio;
 }

@@ -32,9 +32,6 @@ AudioConnection patchCord40(st, 0, out, 1);
 // Send synchronicity measure back to server.
 AudioConnection patchCord50(st, 0, client, 1);
 
-elapsedMillis performanceReport;
-const uint32_t PERF_REPORT_INTERVAL = 5000;
-
 //region Forward declarations
 void startAudio();
 //endregion
@@ -62,18 +59,7 @@ void setup() {
 }
 
 void loop() {
-    if (!client.isConnected()) {
-        client.connect(2500);
-    } else {
-        client.loop();
-
-        if (REPORT_USAGE && performanceReport > PERF_REPORT_INTERVAL) {
-            Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
-                          AudioMemoryUsage(),
-                          AudioProcessorUsage());
-            performanceReport = 0;
-        }
-    }
+    client.loop();
 }
 
 

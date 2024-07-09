@@ -41,9 +41,7 @@ public:
             x(initialValue),
             yPrev(initialValue),
             deltaThreshold(threshold),
-            s(smoothness) {
-        Utils::clamp(s, 0.f, 1.f);
-    }
+            s(Utils::clamp(smoothness, 0.f, 1.f)) {}
 
     void set(T targetValue) {
         x = targetValue;
