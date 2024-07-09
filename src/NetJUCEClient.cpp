@@ -110,11 +110,6 @@ bool NetJUCEClient::begin()
     return Ethernet.begin(clientIP, netmask, gatewayIP);
 }
 
-bool NetJUCEClient::isConnected() const
-{
-    return joined;
-}
-
 void NetJUCEClient::connect(uint connectTimeoutMs)
 {
     if (!active) {
@@ -155,6 +150,10 @@ void NetJUCEClient::update(void)
 
 void NetJUCEClient::loop()
 {
+    while (!joined) {
+        connect(2500);
+    }
+
     receive();
 
     checkConnectivity();
@@ -164,12 +163,20 @@ void NetJUCEClient::loop()
     if (settings.doClockAdjust) {
         adjustClock();
     }
+
+    if (REPORT_USAGE && usageReportTimer > kUsageReportInterval) {
+        Serial.printf("%sAudio memory in use: %d blocks; processor %f %%\n",
+                      settings.bufferDebugMode > NO_BUFFER_DEBUG ? "\n" : "",
+                      AudioMemoryUsage(),
+                      AudioProcessorUsage());
+        usageReportTimer = 0;
+    }
 }
 
 void NetJUCEClient::adjustClock()
 {
     // Try to adjust the clock periodically.
-    if (driftCheckTimer > 2000 && !peers.empty()) {
+    if (driftCheckTimer > DRIFT_CHECK_INTERVAL_MS && !peers.empty()) {
         driftCheckTimer = 0;
 
         // Proceed if the server is found.
@@ -180,7 +187,7 @@ void NetJUCEClient::adjustClock()
             // Maybe trigger clock adjustment
             fs.set(sampleRate);
 
-            Serial.printf("Drift ratio: %f, sample rate %f\n", drift, sampleRate);
+            Serial.printf("Drift ratio: %.7f, Sample rate %.7f\n", drift, sampleRate);
         }
     }
     fs.getNext();
@@ -227,7 +234,10 @@ void NetJUCEClient::receive()
         if (!shouldSetConnected && (
                 (newSeqNum == 0 && prevSeqNum != UINT16_MAX) || (newSeqNum > 0 && newSeqNum - prevSeqNum != 1)
         )) {
-            Serial.printf("Dropped packet. SeqNum: curr: %d, prev: %d\n", newSeqNum, prevSeqNum);
+            Serial.printf("%sDropped packet. SeqNum: curr: %d, prev: %d\n",
+                          settings.bufferDebugMode == RW_DELTA_METER ? "\n" : "",
+                          newSeqNum,
+                          prevSeqNum);
             numPacketsDropped += newSeqNum == 0 ? UINT16_MAX + 1 - prevSeqNum : newSeqNum - prevSeqNum;
         }
         prevSeqNum = newSeqNum;

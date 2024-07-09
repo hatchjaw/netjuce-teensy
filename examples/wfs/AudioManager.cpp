@@ -51,16 +51,5 @@ bool AudioManager::init() {
 }
 
 void AudioManager::loop() {
-    if (!njc.isConnected()) {
-        njc.connect(2500);
-    } else {
-        njc.loop();
-    }
-
-    if (REPORT_USAGE && usageReportTimer > USAGE_REPORT_INTERVAL) {
-        Serial.printf("Audio memory in use: %d blocks; processor %f %%\n",
-                      AudioMemoryUsage(),
-                      AudioProcessorUsage());
-        usageReportTimer = 0;
-    }
+    njc.loop();
 }

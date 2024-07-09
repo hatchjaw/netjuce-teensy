@@ -5,9 +5,6 @@
 #ifndef NETJUCE_TEENSY_CIRCULARBUFFER_H
 #define NETJUCE_TEENSY_CIRCULARBUFFER_H
 
-#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 16)
-//#define CIRCULAR_BUFFER_SIZE 1000
-
 #include <Arduino.h>
 #include "ClientSettings.h"
 #include "SmoothedValue.h"
@@ -42,7 +39,7 @@ private:
         WRITE
     };
     static constexpr int BLOCKS_PER_READ_INCREMENT_UPDATE{10000};
-    static constexpr uint8_t VISUALISER_LENGTH{101};
+    static constexpr uint8_t VISUALISER_LENGTH{61};
     const uint32_t kStatInterval{2500};
     const uint8_t kNumChannels;
     const uint16_t kLength;
@@ -61,7 +58,7 @@ private:
     T **buffer;
     uint16_t writeIndex{0}, readIndex{0};
     float readPos{0.f};
-    SmoothedValue_V2<double> readPosIncrement{1., .95f};
+    SmoothedValue_V2<double> readPosIncrement{1., READ_POS_SMOOTHNESS};
     uint64_t numBlockReads{0}, numBlockWrites{0}, numSampleWrites{0}, numSampleReads{0};
     uint32_t blocksReadSinceLastUpdate{0}, blocksWrittenSinceLastUpdate{0};
     float driftRatio{1.f};

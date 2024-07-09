@@ -141,7 +141,11 @@ serial at five second intervals.
 
 ### `RESAMPLING_MODE`
 
-Resampling options for the client's circular buffer. One of:
+Resampling options for the client's circular buffer. Since there is no
+authoritative source of time, the client can be instructed to use the rate
+of packet transmission as a low-resolution clock, resampling the contents of its
+circular buffer accordingly. `RESAMPLING_MODE` takes one of the following 
+values:
 
 #### `NO_RESAMPLE`
 
@@ -198,6 +202,8 @@ data to be used for Teensy's two output audio channels.
 
 ## C++ API
 
+### Settings
+
 Most of the above settings are specifiable to the constructor of the 
 `NetJUCEClient` class, which accepts a single parameter, an instance of the 
 `ClientSettings` struct.
@@ -234,3 +240,27 @@ s.transmissionDebugMode = HEXDUMP_RECEIVE;
 s.doClockAdjust = true;
 c = new NetJUCEClient(s);
 ```
+
+### `NetJUCEClient` methods
+
+#### `begin()`
+
+Call this method from `setup()` to initialise the ethernet subsystem via the
+[QNEthernet](https://github.com/ssilverman/QNEthernet) library. If you're 
+handling ethernet setup separately, there's no need to call `begin()`.
+
+Returns a bool indicating whether ethernet was initialised successfully, e.g.:
+
+```c++
+if (!client.begin()) {
+    Serial.println("Failed to initialise ethernet.");
+}
+```
+
+#### `loop()`
+
+Call this method from Teensy's top-level `loop()`. At each call to 
+`NetJUCEClient::loop()` the client will attempt to join the multicast group; if 
+it has already joined, it will attempt to send and receive UDP packets.
+If `ClientSettings::doClockAdjust` is true, this is where clock adjustments
+will be calculated too.

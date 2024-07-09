@@ -49,6 +49,22 @@
 #define TRANSMISSION_DEBUG_MODE NO_TRANSMISSION_DEBUG
 #endif
 
+#ifndef DRIFT_CHECK_INTERVAL_MS
+#define DRIFT_CHECK_INTERVAL_MS 2000
+#endif
+
+#ifndef CIRCULAR_BUFFER_SIZE
+#define CIRCULAR_BUFFER_SIZE (AUDIO_BLOCK_SAMPLES * 16)
+#endif
+
+#ifndef RW_DELTA_WINDOW_PROPORTION
+#define RW_DELTA_WINDOW_PROPORTION .25f
+#endif
+
+#ifndef READ_POS_SMOOTHNESS
+#define READ_POS_SMOOTHNESS .999f
+#endif
+
 #include <IPAddress.h>
 
 enum ResamplingMode
@@ -173,6 +189,10 @@ struct ClientSettings : public Printable
      */
     uint16_t remotePort;
     /**
+     * Enable/disable clock adjustments.
+     */
+    bool doClockAdjust;
+    /**
      * Mode to use when resampling the circular buffer. Default: INTERPOLATE.
      * @see ResamplingMode
      */
@@ -187,10 +207,6 @@ struct ClientSettings : public Printable
      * @see TransmissionDebugMode
      */
     TransmissionDebugMode transmissionDebugMode;
-    /**
-     * Enable/disable clock adjustments.
-     */
-    bool doClockAdjust;
 };
 
 #endif //NETJUCE_TEENSY_CLIENT_SETTINGS_H

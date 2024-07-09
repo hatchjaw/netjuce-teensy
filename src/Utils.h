@@ -13,7 +13,7 @@
 class Utils
 {
 public:
-    static void clamp(float &value, float min, float max)
+    static float clamp(float value, float min, float max)
     {
         if (value < min) {
 //            Serial.printf("value %f < min %f \n", value, min);
@@ -22,6 +22,8 @@ public:
 //            Serial.printf("value %f > max %f \n", value, max);
             value = max;
         }
+
+        return value;
     }
 };
 

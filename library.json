@@ -19,7 +19,7 @@
       "version": "https://github.com/ssilverman/QNEthernet/releases/tag/v0.28.0"
     }
   ],
-  "version": "0.0.1",
+  "version": "0.0.2",
   "license": "GPL-3.0",
   "homepage": "https://github.com/hatchjaw/netjuce-teensy",
   "frameworks": "arduino",
